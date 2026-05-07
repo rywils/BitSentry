@@ -1,0 +1,64 @@
+# Documentation 
+old_docs/
+docusaurus/
+stitch_export
+REPORTS/
+
+# Secrets 
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+.secrets/
+
+# Scan & run artifacts 
+scan_results/
+scan_results_test/
+suite_runs/
+bitreport/_demo_out/
+bitreport/dashboard/dist/
+
+# Python 
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+*.cover
+.hypothesis/
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+#Node 
+node_modules/
+**/node_modules/
+
+# Go / tooling 
+bitprobe/scanner/engines/network/network_scanner
+bitprobe/scanner/engines/network/*.exe
+
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.local.md
+notes/
+private/
+bitprobe/.git/

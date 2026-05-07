@@ -1,0 +1,8 @@
+services:
+  bitsentry:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: bitsentry:latest
+    stdin_open: true
+    tty: true
