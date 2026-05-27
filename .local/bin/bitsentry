@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+BITSENTRY_REPO="/Users/siltrace/code/BitSentry"
+VENV_PY="${BITSENTRY_REPO}/.venv/bin/python"
+BITSENTRY_PY="${BITSENTRY_REPO}/bitsentry.py"
+ENV_FILE="${BITSENTRY_REPO}/.env"
+
+if [[ ! -x "${VENV_PY}" && -x "${BITSENTRY_REPO}/.venv/bin/python3" ]]; then
+  VENV_PY="${BITSENTRY_REPO}/.venv/bin/python3"
+fi
+
+if [[ -f "${ENV_FILE}" ]]; then
+  set -a
+  source "${ENV_FILE}"
+  set +a
+fi
+
+exec "${VENV_PY}" "${BITSENTRY_PY}" "$@"

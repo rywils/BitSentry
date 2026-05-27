@@ -39,38 +39,67 @@ def normalize_product_name(name: str) -> str:
     return name
 
 
+# Known product aliases mapping detected technology names → CPE product names.
+# Each detected name maps to one or more CPE product identifiers that represent
+# the same software. Only exact matches within these alias lists are used.
+PRODUCT_ALIASES: Dict[str, List[str]] = {
+    "wordpress": ["wordpress", "wp"],
+    "apache": ["apache", "apache_http_server", "httpd", "apache_httpd"],
+    "nginx": ["nginx", "nginx_proxy", "nginx_plus"],
+    "mysql": ["mysql", "oracle_mysql", "mariadb"],
+    "mariadb": ["mariadb", "mysql"],
+    "postgresql": ["postgresql", "postgres"],
+    "mongodb": ["mongodb", "mongo_db"],
+    "redis": ["redis", "redis_server"],
+    "laravel": ["laravel"],
+    "django": ["django"],
+    "rails": ["rails", "ruby_on_rails"],
+    "nodejs": ["nodejs", "node.js", "node_js"],
+    "php": ["php", "php_fpm", "php_cli"],
+    "python": ["python"],
+    "java": ["java", "oracle_java", "openjdk", "jdk", "jre"],
+}
+
+
+def _get_cpe_names(detected_name: str) -> List[str]:
+    """Return all known CPE product names that map to this detected technology."""
+    normalized = normalize_product_name(detected_name)
+    return PRODUCT_ALIASES.get(normalized, [normalized])
+
+
+# Known CPE vendor for each detected technology.
+# When set, query_cves uses it to filter out CVEs from unrelated vendors
+# (e.g. "astro" web framework has vendor "astro", not "saxum2003").
+PRODUCT_VENDORS: Dict[str, str] = {
+    "wordpress": "wordpress",
+    "apache": "apache",
+    "nginx": "nginx",
+    "mysql": "mysql",
+    "mariadb": "mariadb",
+    "postgresql": "postgresql",
+    "mongodb": "mongodb",
+    "redis": "redis",
+    "laravel": "laravel",
+    "django": "django",
+    "rails": "rails",
+    "nodejs": "nodejs",
+    "php": "php",
+    "python": "python",
+    "java": "java",
+    "astro": "astro",
+}
+
+
+def _get_expected_vendor(detected_name: str) -> Optional[str]:
+    """Return the expected CPE vendor for a detected technology, if known."""
+    normalized = normalize_product_name(detected_name)
+    return PRODUCT_VENDORS.get(normalized)
+
+
 def product_names_match(detected: str, cve_product: str) -> bool:
     """Check if detected product matches CVE product name."""
-    detected = normalize_product_name(detected)
-    cve_product = normalize_product_name(cve_product)
-    
-    # Direct match
-    if detected == cve_product:
-        return True
-    
-    # Common aliases - strict mapping only
-    aliases = {
-        "wordpress": ["wordpress", "wp"],
-        "apache": ["apache", "apache_http_server", "httpd", "apache_httpd"],
-        "nginx": ["nginx", "nginx_proxy", "nginx_plus"],
-        "mysql": ["mysql", "oracle_mysql", "mariadb"],
-        "mariadb": ["mariadb", "mysql"],
-        "postgresql": ["postgresql", "postgres"],
-        "mongodb": ["mongodb", "mongo_db"],
-        "redis": ["redis", "redis_server"],
-        "laravel": ["laravel"],
-        "django": ["django"],
-        "rails": ["rails", "ruby_on_rails"],
-        "nodejs": ["nodejs", "node.js", "node_js"],
-        "php": ["php", "php_fpm", "php_cli"],
-        "python": ["python"],
-        "java": ["java", "oracle_java", "openjdk", "jdk", "jre"],
-    }
-    
-    detected_aliases = aliases.get(detected, [detected])
-    cve_aliases = aliases.get(cve_product, [cve_product])
-    
-    # Only exact matches within alias lists
+    detected_aliases = _get_cpe_names(detected)
+    cve_aliases = _get_cpe_names(cve_product)
     return any(d == c for d in detected_aliases for c in cve_aliases)
 
 
@@ -224,7 +253,12 @@ def calculate_severity(cvss_score: Optional[float], cve_id: str = "") -> str:
 # Export for use in plugins
 __all__ = [
     "parse_cpe",
+    "normalize_product_name",
     "product_names_match",
+    "PRODUCT_ALIASES",
+    "PRODUCT_VENDORS",
+    "_get_cpe_names",
+    "_get_expected_vendor",
     "version_in_range",
     "extract_cve_info",
     "match_technology_to_cve",

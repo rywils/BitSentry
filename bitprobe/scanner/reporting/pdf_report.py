@@ -54,8 +54,9 @@ class PDFReportGenerator:
         severity_stats = stats.get("findings_by_severity", {})
         risk = stats.get("risk", {})
         raw_risk = risk.get("raw_score", 0)
-        adjusted_risk = risk.get("adjusted_score", risk.get("normalized_score", 0))
-        normalized_risk = risk.get("normalized_score", adjusted_risk)
+        normalized_risk = risk.get("normalized_score", 0)
+        vuln_total = stats.get('total_findings', 0)
+        edge_total = stats.get('edge_infrastructure_findings', 0)
 
         # COVER
         elements.append(Paragraph("BitProbe Security Assessment Report", self.styles["Title"]))
@@ -91,32 +92,33 @@ class PDFReportGenerator:
         )
         elements.append(
             Paragraph(
-                f"Risk Score (Post-Edge): {normalized_risk} / 100 "
-                f"(pre-edge: {raw_risk})",
-                self.styles["Normal"],
-            )
-        )
-        elements.append(
-            Paragraph(
-                f"Edge-Adjusted Total (uncapped): {adjusted_risk}",
+                f"Risk Score: {normalized_risk} / 100 (raw: {raw_risk})",
                 self.styles["Normal"],
             )
         )
         elements.append(Spacer(1, 0.2 * inch))
 
-        elements.append(Paragraph("Risk Overview by Severity", self.styles["Heading2"]))
+        elements.append(Paragraph("Vulnerabilities by Severity", self.styles["Heading2"]))
         for sev, count in severity_stats.items():
             if count > 0:
                 elements.append(
                     Paragraph(f"{sev.upper()}: {count}", self.styles["Normal"])
                 )
 
-        elements.append(Spacer(1, 0.2 * inch))
+        elements.append(Spacer(1, 0.1 * inch))
         elements.append(
             Paragraph(
-                f"Total Findings: {stats.get('total_findings', 0)}", self.styles["Normal"]
+                f"Total Vulnerabilities: {vuln_total}", self.styles["Normal"]
             )
         )
+        if edge_total > 0:
+            elements.append(
+                Paragraph(
+                    f"Edge Infrastructure Findings: {edge_total} "
+                    "(INFO - third-party services, not counted as vulnerabilities)",
+                    self.styles["Normal"],
+                )
+            )
         elements.append(
             Paragraph(
                 f"URLs Scanned: {stats.get('urls_scanned')}", self.styles["Normal"]
@@ -131,21 +133,23 @@ class PDFReportGenerator:
 
         elements.append(PageBreak())
 
-        # DETAILED FINDINGS
-        elements.append(Paragraph("Detailed Findings", self.styles["Heading1"]))
+        findings = self.report_data.get("findings", [])
+        vuln_findings = [f for f in findings if not f.get("edge_infrastructure")]
+        edge_findings = [f for f in findings if f.get("edge_infrastructure")]
+
+        # VULNERABILITIES
+        elements.append(Paragraph("Vulnerabilities", self.styles["Heading1"]))
         elements.append(Spacer(1, 0.2 * inch))
 
-        findings = self.report_data.get("findings", [])
-
-        if not findings:
+        if not vuln_findings:
             elements.append(
                 Paragraph(
-                    "No security issues were detected during this scan.",
+                    "No security vulnerabilities were detected.",
                     self.styles["Normal"],
                 )
             )
         else:
-            for idx, finding in enumerate(findings, 1):
+            for idx, finding in enumerate(vuln_findings, 1):
                 elements.append(
                     Paragraph(f"{idx}. {finding['title']}", self.styles["Heading2"])
                 )
@@ -156,29 +160,12 @@ class PDFReportGenerator:
                     )
                 )
 
-                edge_flag = finding.get("edge_infrastructure", False)
                 raw_score = finding.get("raw_risk_score", finding.get("risk_score"))
-                adjusted_score = finding.get("adjusted_risk_score", raw_score)
-
-                elements.append(
-                    Paragraph(
-                        f"Edge Infrastructure: {'YES' if edge_flag else 'NO'}",
-                        self.styles["Normal"],
-                    )
-                )
 
                 if raw_score is not None:
                     elements.append(
                         Paragraph(
-                            f"Risk Score (pre-edge): {raw_score}",
-                            self.styles["Normal"],
-                        )
-                    )
-
-                if adjusted_score is not None:
-                    elements.append(
-                        Paragraph(
-                            f"Risk Score (post-edge): {adjusted_score}",
+                            f"Risk Score: {raw_score}",
                             self.styles["Normal"],
                         )
                     )
@@ -225,6 +212,48 @@ class PDFReportGenerator:
                 elements.append(
                     Paragraph(finding["remediation"], self.styles["Normal"])
                 )
+                elements.append(PageBreak())
+
+        # EDGE INFRASTRUCTURE
+        if edge_findings:
+            elements.append(Paragraph("Edge Infrastructure (Informational)", self.styles["Heading1"]))
+            elements.append(Spacer(1, 0.1 * inch))
+            elements.append(
+                Paragraph(
+                    "The following findings relate to third-party edge infrastructure (CDN, reverse proxy) "
+                    "that is outside your direct control. These are not vulnerabilities — they are "
+                    "recorded for awareness only.",
+                    self.styles["Normal"],
+                )
+            )
+            elements.append(Spacer(1, 0.2 * inch))
+
+            for idx, finding in enumerate(edge_findings, 1):
+                elements.append(
+                    Paragraph(f"{idx}. {finding['title']}", self.styles["Heading2"])
+                )
+                elements.append(
+                    Paragraph(
+                        "Category: Edge Infrastructure",
+                        self.styles["Normal"],
+                    )
+                )
+                elements.append(
+                    Paragraph(
+                        "Severity: INFO",
+                        self.styles["Normal"],
+                    )
+                )
+                elements.append(
+                    Paragraph(f"Affected URL: {finding['url']}", self.styles["Normal"])
+                )
+                elements.append(Spacer(1, 0.1 * inch))
+
+                elements.append(Paragraph("Description", self.styles["Heading3"]))
+                elements.append(
+                    Paragraph(finding["description"], self.styles["Normal"])
+                )
+                elements.append(Spacer(1, 0.1 * inch))
                 elements.append(PageBreak())
 
         doc.build(elements)

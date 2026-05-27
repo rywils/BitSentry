@@ -28,6 +28,60 @@ INSTALL_BIN_PATH="${INSTALL_BIN_DIR}/bitsentry"
 
 SHELL_NAME="$(basename "${SHELL:-}")"
 RC_FILE=""
+ASN_NEEDS_UPDATE=0
+CVE_NEEDS_BOOTSTRAP=0
+
+print_before_first_scan_notice() {
+  local y b d r
+  y='\033[1;33m'
+  b='\033[33m'
+  d='\033[2m'
+  r='\033[0m'
+  if [[ ! -t 1 ]] || [[ -n "${NO_COLOR:-}" ]]; then
+    y=''
+    b=''
+    d=''
+    r=''
+  fi
+
+  echo ""
+  echo -e "${y}========================================================================${r}"
+  echo -e "${y}  Before your first scan (required — installer does not download CVE data)${r}"
+  echo -e "${y}========================================================================${r}"
+  echo ""
+
+  if [[ "${CVE_NEEDS_BOOTSTRAP}" -eq 1 ]]; then
+    echo -e "${y}  CVE database is missing or incomplete. Run the steps below before scanning.${r}"
+    echo ""
+  elif [[ "${ASN_NEEDS_UPDATE}" -eq 1 ]]; then
+    echo -e "${b}  ASN data should be refreshed. CVE steps still apply if you have not bootstrapped yet.${r}"
+    echo ""
+  else
+    echo -e "${b}  Local databases look populated; you can still refresh before scanning.${r}"
+    echo ""
+  fi
+
+  if [[ "${ASN_NEEDS_UPDATE}" -eq 1 ]]; then
+    echo -e "${y}  1) bitsentry update-db${r}"
+  else
+    echo -e "${b}  1) bitsentry update-db${r}  ${d}(ASN ok — optional refresh)${r}"
+  fi
+
+  echo -e "${b}  2) export NVD_API_KEY=\"your-nvd-api-key\"${r}  ${d}(optional, faster NVD sync)${r}"
+
+  if [[ "${CVE_NEEDS_BOOTSTRAP}" -eq 1 ]]; then
+    echo -e "${y}  3) bitsentry update-cve-db --full${r}"
+    echo -e "${b}     ${d}# or: bitsentry update-cve-db --years 15${r}"
+  else
+    echo -e "${b}  3) bitsentry update-cve-db${r}  ${d}(CVE loaded — incremental refresh)${r}"
+  fi
+
+  echo -e "${b}  4) bitsentry cve-stats${r}"
+  echo -e "${y}  5) bitsentry scan example.com${r}"
+  echo ""
+  echo -e "${y}========================================================================${r}"
+}
+
 if [[ "${SHELL_NAME}" == "zsh" ]]; then
   RC_FILE="${HOME}/.zshrc"
 elif [[ "${SHELL_NAME}" == "bash" ]]; then
@@ -120,6 +174,51 @@ else:
     else:
         print(f'    Status: {status}')
 "
+
+echo ""
+echo "[*] CVE database (local status, no network):"
+CVE_NEEDS_BOOTSTRAP=1
+set +e
+"${VENV_PY}" -c "
+import os
+import sys
+sys.path.insert(0, '${REPO_ROOT}/bitprobe')
+from scanner.cve_db_manager import CVE_DB_PATH, describe_cve_db_local_status
+
+status = describe_cve_db_local_status()
+ready = status.startswith('ok (') and 'CVEs loaded)' in status
+tty = sys.stdout.isatty() and not os.environ.get('NO_COLOR', '').strip()
+print(f'    File: {CVE_DB_PATH}')
+if ready:
+    if tty:
+        print(f'    Status: \\033[1;32m{status}\\033[0m')
+    else:
+        print(f'    Status: {status}')
+else:
+    if tty:
+        print(f'    Status: \\033[1;31m{status}\\033[0m')
+        print('    \\033[33mRun: bitsentry update-cve-db --full\\033[0m')
+    else:
+        print(f'    Status: {status}')
+        print('    Run: bitsentry update-cve-db --full')
+sys.exit(0 if ready else 1)
+"
+cve_ready_rc=$?
+set -e
+if [[ "${cve_ready_rc}" -eq 0 ]]; then
+  CVE_NEEDS_BOOTSTRAP=0
+fi
+
+ASN_NEEDS_UPDATE=0
+if "${VENV_PY}" -c "
+import sys
+sys.path.insert(0, '${REPO_ROOT}/bitprobe')
+from scanner.asn_db_updater import describe_asn_db_local_status
+s = describe_asn_db_local_status()
+raise SystemExit(0 if ('missing' in s or 'outdated' in s) else 1)
+" 2>/dev/null; then
+  ASN_NEEDS_UPDATE=1
+fi
 
 LAUNCHER_TMP="$(mktemp)"
 cat > "${LAUNCHER_TMP}" <<EOF
@@ -217,7 +316,7 @@ fi
 
 echo ""
 echo "[✓] Install complete"
-echo "[*] Try: bitsentry scan example.com"
+print_before_first_scan_notice
 if [[ -n "${RC_FILE}" ]]; then
   echo "[*] If command is still not found: source ${RC_FILE} && hash -r"
 elif [[ "${SHELL_NAME}" == "fish" ]]; then

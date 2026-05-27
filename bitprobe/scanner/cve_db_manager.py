@@ -14,12 +14,21 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any
 from packaging import version
 from pathlib import Path
-from scanner.update_state import get_state_timestamp, set_state_timestamp
+from scanner.update_state import get_state_timestamp, set_state_timestamp, merge_section
 
 
 _DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 CVE_DB_PATH = str(_DATA_DIR / "cve_db.sqlite")
+CVE_META_PATH = str(_DATA_DIR / "cve_meta.json")
 NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+DEFAULT_STALE_DAYS = 7
+# Below this count, local DB is treated as a short publication window bootstrap, not full coverage.
+MIN_PRODUCTION_CVE_COUNT = 50_000
+# NVD bulk-download pacing (https://nvd.nist.gov/developers/start-here)
+NVD_SLEEP_NO_KEY = 6.0
+NVD_SLEEP_WITH_KEY = 2.0
+NVD_MAX_RETRIES = 6
+NVD_RETRY_HTTP = frozenset({404, 429, 500, 502, 503, 504})
 
 
 def _format_nvd_datetime(dt: datetime) -> str:
@@ -27,11 +36,234 @@ def _format_nvd_datetime(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%S.000")
 
 
+def _normalize_nvd_timestamp(value: str) -> str:
+    """Coerce stored timestamps to NVD lastMod format (yyyy-MM-ddTHH:mm:ss.000)."""
+    value = (value or "").strip()
+    if not value:
+        return value
+    try:
+        parsed = value.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(parsed)
+        if dt.tzinfo is not None:
+            dt = dt.replace(tzinfo=None)
+        return _format_nvd_datetime(dt)
+    except ValueError:
+        pass
+    if "T" in value and "." in value:
+        base, frac = value.split(".", 1)
+        frac_digits = "".join(c for c in frac if c.isdigit())[:3].ljust(3, "0")
+        return f"{base}.{frac_digits}"
+    return value
+
+
+def _nvd_inter_request_sleep(api_key: Optional[str], *, full_sync: bool) -> float:
+    """Seconds to wait between NVD requests (rate-limit safe)."""
+    if full_sync:
+        return NVD_SLEEP_WITH_KEY if api_key else NVD_SLEEP_NO_KEY
+    return 0.65 if not api_key else 0.25
+
+
+def _nvd_get(
+    params: Dict[str, Any],
+    headers: Dict[str, str],
+    *,
+    timeout: int = 60,
+    verbose: bool = False,
+) -> requests.Response:
+    """GET NVD CVE API with retries on transient HTTP errors."""
+    last: Optional[requests.Response] = None
+    for attempt in range(1, NVD_MAX_RETRIES + 1):
+        response = requests.get(
+            NVD_API_URL, params=params, headers=headers, timeout=timeout
+        )
+        last = response
+        if response.status_code == 200:
+            return response
+        if response.status_code not in NVD_RETRY_HTTP:
+            return response
+        wait = (NVD_SLEEP_WITH_KEY if headers.get("apiKey") else NVD_SLEEP_NO_KEY) * attempt
+        print(
+            f"  [!] NVD HTTP {response.status_code} "
+            f"(attempt {attempt}/{NVD_MAX_RETRIES}); retrying in {wait:.0f}s..."
+        )
+        if verbose:
+            print(f"[VERBOSE] URL: {response.url}")
+            body = (response.text or "").strip()
+            if body:
+                print(f"[VERBOSE] Body: {body[:500]}")
+        time.sleep(wait)
+    assert last is not None
+    return last
+
+
+def _normalize_severity(
+    raw: Optional[str], cvss_score: Optional[float]
+) -> Optional[str]:
+    """
+    Map NVD/CVSS severity strings to DB enum values.
+    Returns None when severity cannot be classified (allowed by schema).
+    """
+    allowed = frozenset({"critical", "high", "medium", "low"})
+    aliases = {
+        "moderate": "medium",
+        "none": None,
+        "unknown": None,
+        "": None,
+    }
+
+    if raw:
+        normalized = str(raw).strip().lower()
+        normalized = aliases.get(normalized, normalized)
+        if normalized in allowed:
+            return normalized
+
+    if cvss_score is not None:
+        try:
+            score = float(cvss_score)
+        except (TypeError, ValueError):
+            return None
+        if score <= 0:
+            return None
+        if score >= 9.0:
+            return "critical"
+        if score >= 7.0:
+            return "high"
+        if score >= 4.0:
+            return "medium"
+        return "low"
+
+    return None
+
+
+def _connect() -> sqlite3.Connection:
+    conn = sqlite3.connect(CVE_DB_PATH)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    return conn
+
+
+def _load_legacy_meta() -> dict:
+    if not os.path.exists(CVE_META_PATH):
+        return {}
+    with open(CVE_META_PATH, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return data if isinstance(data, dict) else {}
+
+
+def bootstrap_cve_state() -> str | None:
+    """
+    Seed ~/.bitsentry/state.json cve.last_modified from DB or legacy meta
+    so incremental NVD sync works after upgrades or empty state files.
+    """
+    existing = get_state_timestamp("cve", "last_modified")
+    if existing:
+        return existing
+
+    if os.path.exists(CVE_DB_PATH):
+        conn = _connect()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM cve_entries")
+            if cursor.fetchone()[0] == 0:
+                return None
+            cursor.execute(
+                "SELECT MAX(last_modified) FROM cve_entries "
+                "WHERE last_modified IS NOT NULL AND last_modified != ''"
+            )
+            row = cursor.fetchone()
+            if row and row[0]:
+                set_state_timestamp("cve", "last_modified", row[0])
+                return row[0]
+        finally:
+            conn.close()
+
+    # Do not seed from legacy meta when SQLite is empty — that cursor is too
+    # stale and triggers huge lastMod incremental pulls (~40k+ CVEs).
+    meta = _load_legacy_meta()
+    if meta.get("entry_count", 0) == 0:
+        return None
+
+    last_update = meta.get("last_update")
+    if isinstance(last_update, str) and last_update:
+        try:
+            dt = datetime.fromisoformat(last_update.replace("Z", "+00:00"))
+            if dt.tzinfo is not None:
+                dt = dt.replace(tzinfo=None)
+            seeded = _format_nvd_datetime(dt)
+        except ValueError:
+            seeded = last_update
+        set_state_timestamp("cve", "last_modified", seeded)
+        return seeded
+
+    return None
+
+
+def cve_db_needs_update(stale_days: int = DEFAULT_STALE_DAYS) -> bool:
+    """True when the local CVE store is missing or older than stale_days."""
+    if os.environ.get("BITSENTRY_SKIP_CVE_UPDATE", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }:
+        return False
+
+    if not os.path.exists(CVE_DB_PATH):
+        return True
+
+    conn = _connect()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM cve_entries")
+        count = cursor.fetchone()[0]
+        if count == 0:
+            return True
+
+        cursor.execute("SELECT value FROM metadata WHERE key = 'last_updated'")
+        row = cursor.fetchone()
+        if not row or not row[0]:
+            meta = _load_legacy_meta()
+            last_update = meta.get("last_update")
+            if not last_update:
+                return True
+            last_dt = datetime.fromisoformat(last_update)
+        else:
+            last_dt = datetime.fromisoformat(row[0])
+    finally:
+        conn.close()
+
+    return datetime.utcnow() - last_dt > timedelta(days=stale_days)
+
+
+def describe_cve_db_local_status() -> str:
+    """
+    Short status string for installers / diagnostics (no network).
+    """
+    if not os.path.exists(CVE_DB_PATH):
+        return "missing (never built)"
+    conn = _connect()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM cve_entries")
+        count = cursor.fetchone()[0]
+    finally:
+        conn.close()
+    if count == 0:
+        return "empty (0 CVEs; bootstrap required before reliable correlation)"
+    if count < MIN_PRODUCTION_CVE_COUNT:
+        return (
+            f"partial ({count} CVEs; run update-cve-db --full or --years 15 "
+            "for complete product coverage)"
+        )
+    if cve_db_needs_update():
+        return f"stale or incomplete ({count} CVEs; refresh recommended)"
+    return f"ok ({count} CVEs loaded)"
+
+
 def init_cve_database():
     """Initialize SQLite database with CVE schema."""
     os.makedirs(os.path.dirname(CVE_DB_PATH), exist_ok=True)
     
-    conn = sqlite3.connect(CVE_DB_PATH)
+    conn = _connect()
     cursor = conn.cursor()
     
     # Main CVE entries table
@@ -93,14 +325,22 @@ def init_cve_database():
     print(f"[+] CVE database initialized at {CVE_DB_PATH}")
 
 
-def update_cve_database(days: int = 30, api_key: Optional[str] = None,
-                        incremental: bool = True, force: bool = False,
-                        verbose: bool = False) -> int:
+def update_cve_database(
+    days: int = 30,
+    years: Optional[int] = None,
+    full_sync: bool = False,
+    api_key: Optional[str] = None,
+    incremental: bool = True,
+    force: bool = False,
+    verbose: bool = False,
+) -> int:
     """
     Update CVE database from NVD feeds.
 
     Args:
-        days: Number of days back to fetch CVEs (for initial/full updates)
+        days: Days of *publication* window when bootstrapping (not scan coverage)
+        years: Alternative bootstrap: CVEs published in the last N years
+        full_sync: Download entire NVD corpus (slow; use for first-time DB build)
         api_key: Optional NVD API key for higher rate limits
         incremental: If True, only fetch CVEs modified since last update
         force: Force update even if not needed
@@ -110,25 +350,46 @@ def update_cve_database(days: int = 30, api_key: Optional[str] = None,
         Number of CVEs added/updated
     """
     init_cve_database()
+    bootstrap_cve_state()
 
     headers = {
         "User-Agent": "BitSentry/1.0",
     }
+    api_key = api_key or os.environ.get("NVD_API_KEY")
     if api_key:
-        headers['apiKey'] = api_key
+        headers["apiKey"] = api_key
 
-    params = {
-        'resultsPerPage': 2000,
-        'startIndex': 0,
+    params: Dict[str, Any] = {
+        "resultsPerPage": 2000,
+        "startIndex": 0,
     }
+    conn = _connect()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM cve_entries")
+        existing_count = cursor.fetchone()[0]
+    finally:
+        conn.close()
 
     # Determine update strategy from persistent state
     state_last_modified = get_state_timestamp("cve", "last_modified")
     update_end = _format_nvd_datetime(datetime.utcnow())
 
-    if incremental and state_last_modified and not force:
+    if full_sync:
+        merge_section("cve", {"last_modified": None})
+        state_last_modified = None
+        print("[*] Full sync requested: ignoring incremental cursor and date windows")
+    elif existing_count == 0:
+        merge_section("cve", {"last_modified": None})
+        state_last_modified = None
+
+    use_incremental = (
+        incremental and state_last_modified and not force and not full_sync
+    )
+
+    if use_incremental:
         # Incremental: only fetch CVEs modified since last update
-        mod_start = state_last_modified
+        mod_start = _normalize_nvd_timestamp(state_last_modified)
         params['lastModStartDate'] = mod_start
         params['lastModEndDate'] = update_end
         print("[*] Incremental CVE update:")
@@ -137,18 +398,33 @@ def update_cve_database(days: int = 30, api_key: Optional[str] = None,
         if verbose:
             print(f"[VERBOSE] Using lastModStartDate filter: {mod_start}")
     else:
-        # Full update: fetch CVEs published in the last N days
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=days)
-        params['pubStartDate'] = _format_nvd_datetime(start_date)
-        params['pubEndDate'] = _format_nvd_datetime(end_date)
-        if incremental and not state_last_modified and not force:
-            print(
-                "[!] No CVE state timestamp found; performing initial full sync."
-            )
-        print(f"[*] Full update: fetching CVEs published in last {days} days")
-        if verbose:
-            print(f"[VERBOSE] Using pubStartDate filter: {params['pubStartDate']}")
+        if full_sync:
+            if incremental and not state_last_modified and not force:
+                print(
+                    "[!] CVE DB empty: building full local NVD mirror "
+                    "(~350k CVEs; may take 30–90+ min without NVD_API_KEY)."
+                )
+            print("[*] Full NVD corpus sync (no date filter)")
+        else:
+            end_date = datetime.now()
+            if years is not None and years > 0:
+                window_days = years * 365
+                label = f"{years} year(s)"
+            else:
+                window_days = days
+                label = f"{days} days"
+            start_date = end_date - timedelta(days=window_days)
+            params['pubStartDate'] = _format_nvd_datetime(start_date)
+            params['pubEndDate'] = _format_nvd_datetime(end_date)
+            if incremental and not state_last_modified and not force:
+                print(
+                    f"[!] CVE DB empty: bootstrapping publications from last {label}. "
+                    "For complete product coverage run: update-cve-db --full "
+                    "(or --years 15)."
+                )
+            print(f"[*] Windowed update: CVEs published in last {label}")
+            if verbose:
+                print(f"[VERBOSE] Using pubStartDate filter: {params['pubStartDate']}")
     
     total_updated = 0
     start_index = 0
@@ -158,8 +434,16 @@ def update_cve_database(days: int = 30, api_key: Optional[str] = None,
     latest_last_modified: str | None = None
     saw_vulnerabilities = False
     api_failed = False
+    expected_total: Optional[int] = None
 
-    update_type = "incremental" if (incremental and state_last_modified and not force) else f"last {days} days"
+    if use_incremental:
+        update_type = "incremental"
+    elif full_sync:
+        update_type = "full corpus"
+    elif years:
+        update_type = f"last {years} year(s) of publications"
+    else:
+        update_type = f"last {days} days of publications"
     print(f"[*] Fetching CVEs from NVD ({update_type})...")
     print(f"[*] Timeout per request: 60s | Results per page: {params['resultsPerPage']}")
 
@@ -170,19 +454,16 @@ def update_cve_database(days: int = 30, api_key: Optional[str] = None,
 
         try:
             print(f"[Batch {batch_num}] startIndex={start_index}", flush=True)
-            response = requests.get(
-                NVD_API_URL,
-                params=params,
-                headers=headers,
-                timeout=60
-            )
+            response = _nvd_get(params, headers, timeout=60, verbose=verbose)
             request_time = time.time() - request_start
             print(f"({request_time:.1f}s)")
             if response.status_code != 200:
                 print(f"[!] NVD API request failed: HTTP {response.status_code}")
                 print(f"[!] URL: {response.url}")
                 print(f"[!] Response: {response.text}")
-                raise RuntimeError(f"NVD API request failed with HTTP {response.status_code}")
+                raise RuntimeError(
+                    f"NVD API request failed with HTTP {response.status_code}"
+                )
             data = response.json()
             if "vulnerabilities" not in data:
                 print(f"[!] Invalid NVD response (missing 'vulnerabilities') from: {response.url}")
@@ -191,7 +472,7 @@ def update_cve_database(days: int = 30, api_key: Optional[str] = None,
 
             vulnerabilities = data.get('vulnerabilities', [])
             if not vulnerabilities:
-                if incremental and state_last_modified and not force:
+                if use_incremental:
                     print("[+] CVE DB already up to date (no changes)")
                 else:
                     print(f"  [!] No vulnerabilities returned, ending.")
@@ -225,8 +506,13 @@ def update_cve_database(days: int = 30, api_key: Optional[str] = None,
 
             store_time = time.time() - store_start
 
-            total_results = data.get('totalResults', 0)
-            start_index += len(vulnerabilities)
+            total_results = int(data.get("totalResults", 0))
+            if expected_total is None:
+                expected_total = total_results
+            page_stride = int(
+                data.get("resultsPerPage") or params["resultsPerPage"]
+            )
+            start_index += page_stride
 
             elapsed = time.time() - overall_start_time
             rate = start_index / elapsed if elapsed > 0 else 0
@@ -240,6 +526,8 @@ def update_cve_database(days: int = 30, api_key: Optional[str] = None,
 
             if start_index >= total_results:
                 break
+
+            time.sleep(_nvd_inter_request_sleep(api_key, full_sync=full_sync))
 
         except requests.exceptions.Timeout:
             print(f"\n[!] Request timeout after 60s - possible hang detected at batch {batch_num}")
@@ -266,24 +554,54 @@ def update_cve_database(days: int = 30, api_key: Optional[str] = None,
     if api_failed:
         raise RuntimeError("CVE update failed before completion; state not updated.")
 
-    # Update metadata
-    conn = sqlite3.connect(CVE_DB_PATH)
+    if (
+        full_sync
+        and expected_total
+        and start_index < expected_total
+        and saw_vulnerabilities
+    ):
+        raise RuntimeError(
+            f"Incomplete full NVD sync: reached index {start_index} of "
+            f"{expected_total} CVEs. Re-run: bitsentry update-cve-db --full"
+        )
+
+    conn = _connect()
     cursor = conn.cursor()
-    cursor.execute(
-        "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
-        ('last_updated', datetime.now().isoformat())
-    )
-    cursor.execute(
-        "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
-        ('total_entries', str(total_updated))
-    )
-    conn.commit()
-    conn.close()
+    try:
+        cursor.execute("SELECT COUNT(*) FROM cve_entries")
+        total_in_db = cursor.fetchone()[0]
+        cursor.execute(
+            "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
+            ('last_updated', datetime.now().isoformat()),
+        )
+        cursor.execute(
+            "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
+            ('total_entries', str(total_in_db)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    os.makedirs(os.path.dirname(CVE_META_PATH), exist_ok=True)
+    with open(CVE_META_PATH, "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "last_update": datetime.utcnow().isoformat(),
+                "updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "entry_count": total_in_db,
+                "incremental": bool(use_incremental),
+            },
+            f,
+            indent=2,
+        )
 
     if saw_vulnerabilities:
         set_state_timestamp("cve", "last_modified", latest_last_modified or update_end)
     
-    print(f"[+] CVE database updated: {total_updated} CVEs added/updated")
+    print(
+        f"[+] CVE database updated: {total_updated} CVEs added/updated "
+        f"({total_in_db} total in DB)"
+    )
     return total_updated
 
 
@@ -305,16 +623,7 @@ def _extract_cve_data(cve_data: Dict) -> Optional[Dict]:
             cvss_data = metric.get('cvssData', {})
             cvss_score = cvss_data.get('baseScore')
             cvss_vector = cvss_data.get('vectorString')
-            severity = metric.get('baseSeverity', '').lower()
-            if not severity and cvss_score:
-                if cvss_score >= 9.0:
-                    severity = 'critical'
-                elif cvss_score >= 7.0:
-                    severity = 'high'
-                elif cvss_score >= 4.0:
-                    severity = 'medium'
-                else:
-                    severity = 'low'
+            severity = _normalize_severity(metric.get('baseSeverity'), cvss_score)
             break
 
     # Extract description
@@ -370,7 +679,7 @@ def _store_cves_batch(cve_data_list: List[Dict]):
     if not cve_data_list:
         return
 
-    conn = sqlite3.connect(CVE_DB_PATH)
+    conn = _connect()
     cursor = conn.cursor()
 
     try:
@@ -416,12 +725,19 @@ def _store_cves_batch(cve_data_list: List[Dict]):
             )
 
         if product_entries:
+            seen_products: set[tuple] = set()
+            unique_products = []
+            for row in product_entries:
+                if row in seen_products:
+                    continue
+                seen_products.add(row)
+                unique_products.append(row)
             cursor.executemany("""
-                INSERT INTO cve_products
+                INSERT OR IGNORE INTO cve_products
                 (cve_id, vendor, product, version_start, version_end,
                  version_start_including, version_end_including)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, product_entries)
+            """, unique_products)
 
         conn.commit()
     finally:
@@ -439,7 +755,11 @@ def query_cves(
     version: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
-    Query CVEs affecting a specific product/version.
+    Query CVEs affecting a specific product/version via exact CPE name matching.
+    
+    Uses PRODUCT_ALIASES from cve_matcher to resolve detected technology names
+    to their known CPE product identifiers, avoiding false positives from
+    substring matching (e.g., 'astro' no longer matches 'astrocam').
     
     Args:
         product: Product name (e.g., "nginx", "wordpress")
@@ -452,25 +772,37 @@ def query_cves(
     if not os.path.exists(CVE_DB_PATH):
         raise FileNotFoundError("CVE database not found. Run 'bitprobe update-cve-db' first.")
     
-    conn = sqlite3.connect(CVE_DB_PATH)
+    from scanner.cve_matcher import _get_cpe_names, _get_expected_vendor
+    
+    cpe_names = _get_cpe_names(product)
+    if not cpe_names:
+        return []
+    
+    expected_vendor = vendor or _get_expected_vendor(product)
+    
+    conn = _connect()
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     
     try:
-        # Base query
-        query = """
+        # Map cpe_names to their expected vendor strings for filtering
+        placeholders = ','.join('?' * len(cpe_names))
+        query = f"""
             SELECT DISTINCT 
                 c.cve_id, c.description, c.severity, 
                 c.cvss_score, c."references", c.published_date
             FROM cve_entries c
             JOIN cve_products p ON c.cve_id = p.cve_id
-            WHERE p.product LIKE ?
+            WHERE p.product IN ({placeholders})
         """
-        params = [f'%{product.lower()}%']
+        params: list = list(cpe_names)
         
-        if vendor:
-            query += " AND (p.vendor = ? OR p.vendor = '')"
-            params.append(vendor.lower())
+        # Auto-filter by known vendor when the product has ambiguous vendors.
+        # E.g. product="astro" has vendor="astro" (real Astro web framework)
+        # and vendor="saxum2003" (Saxum Astro Joomla component).
+        if expected_vendor:
+            query += " AND p.vendor = ?"
+            params.append(expected_vendor)
         
         # Version matching if provided
         if version:
@@ -510,7 +842,7 @@ def get_stats() -> Dict[str, Any]:
     if not os.path.exists(CVE_DB_PATH):
         return {'error': 'Database not found'}
     
-    conn = sqlite3.connect(CVE_DB_PATH)
+    conn = _connect()
     cursor = conn.cursor()
     
     try:

@@ -5,6 +5,20 @@ from typing import List, Dict, Any
 
 _DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 CVE_DB_PATH = str(_DATA_DIR / "cve_db.json")
+CVE_SQLITE_PATH = str(_DATA_DIR / "cve_db.sqlite")
+
+
+def sqlite_cve_db_available() -> bool:
+    """True when the SQLite CVE store exists and has at least one entry."""
+    if not os.path.exists(CVE_SQLITE_PATH):
+        return False
+    try:
+        from scanner.cve_db_manager import get_stats
+
+        stats = get_stats()
+        return bool(stats.get("total_cves", 0))
+    except Exception:
+        return False
 
 
 def load_cve_db() -> Dict[str, Any]:

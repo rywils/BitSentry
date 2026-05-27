@@ -247,6 +247,8 @@ class MarkdownReportGenerator:
         raw_risk = risk.get("raw_score", 0)
         adjusted_risk = risk.get("adjusted_score", risk.get("normalized_score", 0))
         normalized_risk = risk.get("normalized_score", adjusted_risk)
+        vuln_total = stats.get('total_findings', 0)
+        edge_total = stats.get('edge_infrastructure_findings', 0)
 
         # EXEC SUMMARY
         md.append("## Executive Summary\n\n")
@@ -261,45 +263,45 @@ class MarkdownReportGenerator:
             f"- **Overall Risk Level:** `{risk.get('level', 'unknown').upper()}`  \n"
         )
         md.append(
-            f"- **Risk Score (Post-Edge):** {normalized_risk} / 100 "
-            f"(pre-edge: {raw_risk})  \n"
+            f"- **Risk Score:** {normalized_risk} / 100 "
+            f"(raw: {raw_risk})  \n"
         )
-        md.append(f"- **Edge-Adjusted Total (uncapped):** {adjusted_risk}  \n\n")
 
-        md.append("### Risk Overview by Severity\n\n")
+        md.append("### Vulnerabilities by Severity\n\n")
         for sev, count in severity_stats.items():
             if count > 0:
                 md.append(f"- **{sev.upper()}**: {count}\n")
 
-        md.append(f"\n**Total Findings:** {stats.get('total_findings', 0)}  \n")
+        md.append(f"\n**Total Vulnerabilities:** {vuln_total}  \n")
+        if edge_total > 0:
+            md.append(
+                f"> **Edge Infrastructure Findings:** {edge_total}  \n"
+                f"> _(Recorded as INFO — these are third-party services (CDN, edge network) "
+                f"outside your control and are not counted as vulnerabilities.)_  \n\n"
+            )
         md.append(f"**URLs Scanned:** {stats.get('urls_scanned')}  \n")
         md.append(f"**Scan Duration:** {stats.get('duration_seconds')} seconds  \n")
 
         md.append("\n---\n")
 
-        # DETAILED FINDINGS
-        md.append("## Detailed Findings\n\n")
+        findings = self.report_data.get("findings", [])
+        vuln_findings = [f for f in findings if not f.get("edge_infrastructure")]
+        edge_findings = [f for f in findings if f.get("edge_infrastructure")]
 
-        if not self.report_data.get("findings"):
-            md.append("✅ No security issues were detected during this scan.\n")
+        # VULNERABILITIES SECTION
+        md.append("## Vulnerabilities\n\n")
+        if not vuln_findings:
+            md.append("✅ No security vulnerabilities were detected.\n\n")
         else:
-            for idx, finding in enumerate(self.report_data["findings"], 1):
+            for idx, finding in enumerate(vuln_findings, 1):
                 md.append(f"### {idx}. {finding['title']}\n")
                 md.append(f"**Severity:** `{finding['severity'].upper()}`  \n")
 
-                edge_flag = finding.get("edge_infrastructure", False)
                 raw_score = finding.get("raw_risk_score", finding.get("risk_score"))
                 adjusted_score = finding.get("adjusted_risk_score", raw_score)
 
-                md.append(
-                    f"**Edge Infrastructure:** {'YES' if edge_flag else 'NO'}  \n"
-                )
-
                 if raw_score is not None:
-                    md.append(f"**Risk Score (pre-edge):** {raw_score}  \n")
-
-                if adjusted_score is not None:
-                    md.append(f"**Risk Score (post-edge):** {adjusted_score}  \n")
+                    md.append(f"**Risk Score:** {raw_score}  \n")
 
                 md.append(f"**Affected URL:** {finding['url']}  \n\n")
 
@@ -311,7 +313,6 @@ class MarkdownReportGenerator:
                 md.append(f"{finding.get('evidence', {})}\n")
                 md.append("```\n\n")
 
-                # Generate and include attack/defense/mitigation content
                 md.append("### Attack Strategy\n")
                 md.append(f"{self._generate_attack_scenario(finding)}\n\n")
 
@@ -323,6 +324,29 @@ class MarkdownReportGenerator:
 
                 md.append("**Remediation:**\n")
                 md.append(f"{finding['remediation']}\n\n")
+                md.append("---\n\n")
+
+        # EDGE INFRASTRUCTURE SECTION
+        if edge_findings:
+            md.append("## Edge Infrastructure (Informational)\n\n")
+            md.append(
+                "The following findings relate to third-party edge infrastructure (CDN, reverse proxy) "
+                "that is outside your direct control. These are **not vulnerabilities** — they are "
+                "recorded for awareness only.\n\n"
+            )
+            for idx, finding in enumerate(edge_findings, 1):
+                md.append(f"### {idx}. {finding['title']}\n")
+                md.append(f"**Category:** Edge Infrastructure  \n")
+                md.append(f"**Severity:** `INFO`  \n")
+                md.append(f"**Affected URL:** {finding['url']}  \n\n")
+
+                md.append("**Description:**\n")
+                md.append(f"{finding['description']}\n\n")
+
+                md.append("**Evidence:**\n")
+                md.append("```json\n")
+                md.append(f"{finding.get('evidence', {})}\n")
+                md.append("```\n\n")
                 md.append("---\n\n")
 
         with open(output_path, "w", encoding="utf-8") as f:

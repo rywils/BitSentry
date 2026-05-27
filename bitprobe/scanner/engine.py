@@ -27,8 +27,6 @@ except ImportError:
 from scanner.update_notifier import check_and_notify
 from scanner.asn_db_updater import refresh_asn_db_before_scan
 
-check_and_notify()
-
 
 logging.basicConfig(
     level=logging.INFO,
@@ -125,6 +123,9 @@ class ColoredConsole:
         """Print formatted summary table."""
         stats = report.get("statistics", {})
         risk = stats.get("risk", {})
+        vuln_total = stats.get('total_findings', 0)
+        edge_total = stats.get('edge_infrastructure_findings', 0)
+        total_with_edge = stats.get('total_findings_with_edge', vuln_total + edge_total)
         
         if self.rich_console:
             table = Table(
@@ -142,13 +143,13 @@ class ColoredConsole:
             table.add_row("URLs Scanned", str(stats.get('urls_scanned')))
             table.add_row(
                 "Risk Score",
-                f"{stats.get('overall_risk_score')} (pre-edge: {risk.get('raw_score', 0)})"
+                f"{stats.get('overall_risk_score')} (raw: {risk.get('raw_score', 0)})"
             )
             table.add_row("Risk Level", risk.get('level', 'unknown').upper())
             
             self.rich_console.print(table)
             
-            sev_table = Table(title="Findings by Severity", box=box.SIMPLE)
+            sev_table = Table(title="Vulnerabilities", box=box.SIMPLE)
             sev_table.add_column("Severity", style="bold")
             sev_table.add_column("Count", justify="right")
             
@@ -158,8 +159,16 @@ class ColoredConsole:
                     sev_table.add_row(severity.upper(), str(count), style=style)
             
             self.rich_console.print(sev_table)
+            
+            if edge_total > 0:
+                self.rich_console.print(
+                    f"\nEdge Infrastructure Findings: {edge_total}  "
+                    f"(included as INFO — not counted as vulnerabilities)",
+                    style="dim"
+                )
             self.rich_console.print(
-                f"\nTotal Issues Found: {stats.get('total_findings')}",
+                f"\nTotal Vulnerabilities: {vuln_total}  "
+                f"(+ {edge_total} edge infrastructure)",
                 style="bold"
             )
         else:
@@ -171,17 +180,20 @@ class ColoredConsole:
             print(f"Duration: {stats.get('duration_seconds')} seconds")
             print(f"URLs Scanned: {stats.get('urls_scanned')}")
             print(
-                "Overall Risk Score (post-edge): "
+                "Overall Risk Score: "
                 f"{stats.get('overall_risk_score')} "
-                f"(pre-edge: {risk.get('raw_score', 0)})"
+                f"(raw: {risk.get('raw_score', 0)})"
             )
 
-            print("\nFindings by Severity:")
+            print("\nVulnerabilities by Severity:")
             for severity, count in stats.get("findings_by_severity", {}).items():
                 if count > 0:
                     print(f"  {severity.upper()}: {count}")
 
-            print(f"\nTotal Issues Found: {stats.get('total_findings')}")
+            print(f"\nTotal Vulnerabilities: {vuln_total}")
+            if edge_total > 0:
+                print(f"Edge Infrastructure (INFO): {edge_total}  "
+                      f"(not counted as vulnerabilities)")
 
 
 class ScanEngine:
@@ -273,6 +285,7 @@ class ScanEngine:
         self.console.info(f"Starting scan: {self.scan_id}")
         self.console.info(f"Target: {self.config.target_url}")
 
+        check_and_notify()
         refresh_asn_db_before_scan(verbose=self.verbose)
 
         start_time = time.time()
@@ -391,6 +404,19 @@ class ScanEngine:
         return report
 
     def _generate_report(self, duration: float, attack_chains: List[Dict]) -> Dict:
+        raw_findings = [f.to_dict() for f in self.findings]
+        prioritized = prioritize_findings(raw_findings)
+        all_findings = prioritized["findings"]
+
+        # Separate edge infrastructure from actual vulnerabilities
+        edge_findings = [f for f in all_findings if f.get("edge_infrastructure")]
+        vuln_findings = [f for f in all_findings if not f.get("edge_infrastructure")]
+
+        # Edge findings are always informational-only
+        for f in edge_findings:
+            f["severity"] = "info"
+            f["adjusted_risk_score"] = 0.0
+
         findings_by_severity = {
             "critical": 0,
             "high": 0,
@@ -398,32 +424,33 @@ class ScanEngine:
             "low": 0,
             "info": 0,
         }
+        for finding in vuln_findings:
+            findings_by_severity[finding["severity"]] += 1
 
-        for finding in self.findings:
-            findings_by_severity[finding.severity] += 1
-
-        raw_findings = [f.to_dict() for f in self.findings]
-        prioritized = prioritize_findings(raw_findings)
-        findings = prioritized["findings"]
-
-        raw_risk = prioritized["raw_risk_score"]
-        adjusted_risk = prioritized["adjusted_risk_score"]
+        # Risk score from vulnerabilities only (edge findings contribute 0)
+        adjusted_risk = sum(f.get("adjusted_risk_score", 0) for f in vuln_findings)
+        raw_risk = sum(f.get("raw_risk_score", 0) for f in vuln_findings)
         normalized_risk = min(adjusted_risk, 100.0)
-        risk_level = self._risk_level(normalized_risk, len(findings))
-        edge_count = sum(1 for f in findings if f.get("edge_infrastructure"))
+        risk_level = self._risk_level(normalized_risk, len(vuln_findings))
+
+        # Recompute prioritized dict values for vuln-only
+        prioritized["raw_risk_score"] = round(raw_risk, 2)
+        prioritized["adjusted_risk_score"] = round(adjusted_risk, 2)
+        prioritized["findings"] = all_findings
 
         return {
             "scan_id": self.scan_id,
             "target": self.config.target_url,
             "timestamp": datetime.now().isoformat(),
-            "findings": findings,
+            "findings": all_findings,
             "attack_chains": attack_chains,
             "statistics": {
                 "urls_scanned": len(self.crawler.visited_urls),
                 "duration_seconds": round(duration, 2),
                 "findings_by_severity": findings_by_severity,
-                "total_findings": len(self.findings),
-                "edge_infrastructure_findings": edge_count,
+                "total_findings": len(vuln_findings),
+                "edge_infrastructure_findings": len(edge_findings),
+                "total_findings_with_edge": len(all_findings),
                 "overall_risk_score": round(normalized_risk, 2),
                 "risk": {
                     "level": risk_level,

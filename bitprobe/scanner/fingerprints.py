@@ -96,7 +96,6 @@ TECH_SIGNATURES = {
     "languages": {
         "PHP": {
             "headers": {"X-Powered-By": r"PHP[/\s]?[\d.]*"},
-            "body_patterns": [r"\.php", r"<?php"],
             "cookies": [r"PHPSESSID"],
         },
         "Python": {

@@ -192,7 +192,18 @@ Examples:
         "--days",
         type=int,
         default=30,
-        help="Number of days back to fetch CVEs (default: 30)",
+        help="Publication window for bootstrap when DB is empty (default: 30)",
+    )
+    cve_parser.add_argument(
+        "--years",
+        type=int,
+        default=None,
+        help="Bootstrap CVEs published in the last N years (overrides --days)",
+    )
+    cve_parser.add_argument(
+        "--full",
+        action="store_true",
+        help="Build full local NVD mirror (~350k CVEs; first-time setup)",
     )
 
     cve_stats_parser = subparsers.add_parser(
@@ -215,7 +226,14 @@ Examples:
 
     elif args.command == "update-cve-db":
         try:
-            count = update_cve_database(days=args.days, verbose=verbose)
+            full_sync = getattr(args, "full", False)
+            count = update_cve_database(
+                days=args.days,
+                years=getattr(args, "years", None),
+                full_sync=full_sync,
+                force=full_sync,
+                verbose=verbose,
+            )
             print(f"[+] CVE database updated with {count} entries")
             return 0
         except Exception as e:

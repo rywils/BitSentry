@@ -1,10 +1,10 @@
 {
   "metadata": {
     "source": "https://ftp.ripe.net/pub/stats/ripencc/delegated-ripencc-latest",
-    "last_updated": "2026-05-04T18:39:02.828345+00:00",
-    "total_asns": 39367,
-    "source_last_modified": "Sun, 03 May 2026 22:11:51 GMT",
-    "source_etag": "\"69f7c827-7cfaab\""
+    "last_updated": "2026-05-21T17:32:49.046553+00:00",
+    "total_asns": 39474,
+    "source_last_modified": "Wed, 20 May 2026 22:13:08 GMT",
+    "source_etag": "\"6a0e31f4-7d3a5d\""
   },
   "asns": {
     "7": {
@@ -15205,12 +15205,6 @@
       "status": "allocated",
       "allocated": "20000216"
     },
-    "13006": {
-      "registry": "ripencc",
-      "country": "HK",
-      "status": "allocated",
-      "allocated": "20150921"
-    },
     "13008": {
       "registry": "ripencc",
       "country": "AT",
@@ -19231,12 +19225,6 @@
       "status": "allocated",
       "allocated": "20001221"
     },
-    "16105": {
-      "registry": "ripencc",
-      "country": "AT",
-      "status": "allocated",
-      "allocated": "20001221"
-    },
     "16107": {
       "registry": "ripencc",
       "country": "DE",
@@ -21031,12 +21019,6 @@
       "status": "allocated",
       "allocated": "20010501"
     },
-    "20662": {
-      "registry": "ripencc",
-      "country": "LV",
-      "status": "allocated",
-      "allocated": "20010502"
-    },
     "20663": {
       "registry": "ripencc",
       "country": "RU",
@@ -22135,12 +22117,6 @@
       "status": "allocated",
       "allocated": "20010711"
     },
-    "20955": {
-      "registry": "ripencc",
-      "country": "GB",
-      "status": "allocated",
-      "allocated": "20010711"
-    },
     "20956": {
       "registry": "ripencc",
       "country": "BG",
@@ -23040,12 +23016,6 @@
       "country": "DE",
       "status": "allocated",
       "allocated": "20010925"
-    },
-    "21201": {
-      "registry": "ripencc",
-      "country": "SE",
-      "status": "allocated",
-      "allocated": "20010926"
     },
     "21202": {
       "registry": "ripencc",
@@ -25419,7 +25389,7 @@
     },
     "24865": {
       "registry": "ripencc",
-      "country": "GB",
+      "country": "US",
       "status": "allocated",
       "allocated": "20020918"
     },
@@ -32502,12 +32472,6 @@
       "country": "PL",
       "status": "allocated",
       "allocated": "20150526"
-    },
-    "30727": {
-      "registry": "ripencc",
-      "country": "CH",
-      "status": "allocated",
-      "allocated": "20060116"
     },
     "30729": {
       "registry": "ripencc",
@@ -42937,12 +42901,6 @@
       "status": "allocated",
       "allocated": "20050704"
     },
-    "35254": {
-      "registry": "ripencc",
-      "country": "LV",
-      "status": "allocated",
-      "allocated": "20050704"
-    },
     "35255": {
       "registry": "ripencc",
       "country": "US",
@@ -45330,12 +45288,6 @@
       "country": "RO",
       "status": "allocated",
       "allocated": "20051024"
-    },
-    "35778": {
-      "registry": "ripencc",
-      "country": "PL",
-      "status": "allocated",
-      "allocated": "20051025"
     },
     "35779": {
       "registry": "ripencc",
@@ -56599,12 +56551,6 @@
       "status": "allocated",
       "allocated": "20170606"
     },
-    "42179": {
-      "registry": "ripencc",
-      "country": "LV",
-      "status": "allocated",
-      "allocated": "20141229"
-    },
     "42180": {
       "registry": "ripencc",
       "country": "IT",
@@ -57643,12 +57589,6 @@
       "status": "allocated",
       "allocated": "20170509"
     },
-    "42389": {
-      "registry": "ripencc",
-      "country": "CH",
-      "status": "allocated",
-      "allocated": "20070214"
-    },
     "42390": {
       "registry": "ripencc",
       "country": "DE",
@@ -58005,7 +57945,7 @@
     },
     "42460": {
       "registry": "ripencc",
-      "country": "AL",
+      "country": "GB",
       "status": "allocated",
       "allocated": "20110321"
     },
@@ -58932,12 +58872,6 @@
       "country": "DE",
       "status": "allocated",
       "allocated": "20070328"
-    },
-    "42653": {
-      "registry": "ripencc",
-      "country": "RU",
-      "status": "allocated",
-      "allocated": "20141222"
     },
     "42655": {
       "registry": "ripencc",
@@ -60606,12 +60540,6 @@
       "country": "ME",
       "status": "allocated",
       "allocated": "20070522"
-    },
-    "42994": {
-      "registry": "ripencc",
-      "country": "IL",
-      "status": "allocated",
-      "allocated": "20170224"
     },
     "42995": {
       "registry": "ripencc",
@@ -74431,12 +74359,6 @@
       "status": "allocated",
       "allocated": "20080808"
     },
-    "47728": {
-      "registry": "ripencc",
-      "country": "RU",
-      "status": "allocated",
-      "allocated": "20230828"
-    },
     "47730": {
       "registry": "ripencc",
       "country": "FR",
@@ -75522,12 +75444,6 @@
       "country": "TR",
       "status": "allocated",
       "allocated": "20211001"
-    },
-    "47931": {
-      "registry": "ripencc",
-      "country": "IE",
-      "status": "allocated",
-      "allocated": "20161024"
     },
     "47933": {
       "registry": "ripencc",
@@ -76840,12 +76756,6 @@
     "48181": {
       "registry": "ripencc",
       "country": "BG",
-      "status": "allocated",
-      "allocated": "20081022"
-    },
-    "48182": {
-      "registry": "ripencc",
-      "country": "GB",
       "status": "allocated",
       "allocated": "20081022"
     },
@@ -78271,12 +78181,6 @@
       "status": "allocated",
       "allocated": "20141118"
     },
-    "48446": {
-      "registry": "ripencc",
-      "country": "PL",
-      "status": "allocated",
-      "allocated": "20081127"
-    },
     "48447": {
       "registry": "ripencc",
       "country": "GB",
@@ -78544,12 +78448,6 @@
     "48494": {
       "registry": "ripencc",
       "country": "RU",
-      "status": "allocated",
-      "allocated": "20081203"
-    },
-    "48496": {
-      "registry": "ripencc",
-      "country": "LV",
       "status": "allocated",
       "allocated": "20081203"
     },
@@ -80868,12 +80766,6 @@
       "country": "RU",
       "status": "allocated",
       "allocated": "20090303"
-    },
-    "48939": {
-      "registry": "ripencc",
-      "country": "RU",
-      "status": "allocated",
-      "allocated": "20230228"
     },
     "48940": {
       "registry": "ripencc",
@@ -88729,12 +88621,6 @@
       "status": "allocated",
       "allocated": "20100106"
     },
-    "50400": {
-      "registry": "ripencc",
-      "country": "RU",
-      "status": "allocated",
-      "allocated": "20160119"
-    },
     "50401": {
       "registry": "ripencc",
       "country": "UA",
@@ -90876,12 +90762,6 @@
       "country": "RU",
       "status": "allocated",
       "allocated": "20230823"
-    },
-    "50798": {
-      "registry": "ripencc",
-      "country": "RU",
-      "status": "allocated",
-      "allocated": "20100326"
     },
     "50799": {
       "registry": "ripencc",
@@ -97399,12 +97279,6 @@
       "status": "allocated",
       "allocated": "20101213"
     },
-    "51999": {
-      "registry": "ripencc",
-      "country": "GB",
-      "status": "allocated",
-      "allocated": "20191216"
-    },
     "52000": {
       "registry": "ripencc",
       "country": "NL",
@@ -99321,7 +99195,7 @@
     },
     "56447": {
       "registry": "ripencc",
-      "country": "HK",
+      "country": "KZ",
       "status": "allocated",
       "allocated": "20110222"
     },
@@ -111937,12 +111811,6 @@
       "status": "allocated",
       "allocated": "20140923"
     },
-    "59806": {
-      "registry": "ripencc",
-      "country": "GB",
-      "status": "allocated",
-      "allocated": "20140922"
-    },
     "59807": {
       "registry": "ripencc",
       "country": "SE",
@@ -112440,12 +112308,6 @@
       "country": "BG",
       "status": "allocated",
       "allocated": "20140819"
-    },
-    "59901": {
-      "registry": "ripencc",
-      "country": "PL",
-      "status": "allocated",
-      "allocated": "20140818"
     },
     "59902": {
       "registry": "ripencc",
@@ -119803,12 +119665,6 @@
       "status": "allocated",
       "allocated": "20121206"
     },
-    "61288": {
-      "registry": "ripencc",
-      "country": "PL",
-      "status": "allocated",
-      "allocated": "20121206"
-    },
     "61289": {
       "registry": "ripencc",
       "country": "PL",
@@ -123895,6 +123751,12 @@
       "status": "allocated",
       "allocated": "20171212"
     },
+    "137508": {
+      "registry": "ripencc",
+      "country": "JP",
+      "status": "allocated",
+      "allocated": "20180312"
+    },
     "139321": {
       "registry": "ripencc",
       "country": "DE",
@@ -124166,12 +124028,6 @@
       "allocated": "20091113"
     },
     "196677": {
-      "registry": "ripencc",
-      "country": "PL",
-      "status": "allocated",
-      "allocated": "20090805"
-    },
-    "196679": {
       "registry": "ripencc",
       "country": "PL",
       "status": "allocated",
@@ -126205,12 +126061,6 @@
       "status": "allocated",
       "allocated": "20100805"
     },
-    "197211": {
-      "registry": "ripencc",
-      "country": "IT",
-      "status": "allocated",
-      "allocated": "20100810"
-    },
     "197212": {
       "registry": "ripencc",
       "country": "NO",
@@ -126859,6 +126709,30 @@
       "status": "allocated",
       "allocated": "20101029"
     },
+    "197360": {
+      "registry": "ripencc",
+      "country": "GB",
+      "status": "allocated",
+      "allocated": "20260520"
+    },
+    "197361": {
+      "registry": "ripencc",
+      "country": "DE",
+      "status": "allocated",
+      "allocated": "20260520"
+    },
+    "197362": {
+      "registry": "ripencc",
+      "country": "AL",
+      "status": "allocated",
+      "allocated": "20260520"
+    },
+    "197363": {
+      "registry": "ripencc",
+      "country": "RU",
+      "status": "allocated",
+      "allocated": "20260520"
+    },
     "197364": {
       "registry": "ripencc",
       "country": "UA",
@@ -126876,6 +126750,12 @@
       "country": "RU",
       "status": "allocated",
       "allocated": "20111003"
+    },
+    "197367": {
+      "registry": "ripencc",
+      "country": "BY",
+      "status": "allocated",
+      "allocated": "20260520"
     },
     "197368": {
       "registry": "ripencc",
@@ -126895,11 +126775,29 @@
       "status": "allocated",
       "allocated": "20101105"
     },
+    "197371": {
+      "registry": "ripencc",
+      "country": "CH",
+      "status": "allocated",
+      "allocated": "20260520"
+    },
+    "197372": {
+      "registry": "ripencc",
+      "country": "FR",
+      "status": "allocated",
+      "allocated": "20260520"
+    },
     "197373": {
       "registry": "ripencc",
       "country": "UA",
       "status": "allocated",
       "allocated": "20101108"
+    },
+    "197374": {
+      "registry": "ripencc",
+      "country": "RU",
+      "status": "allocated",
+      "allocated": "20260520"
     },
     "197375": {
       "registry": "ripencc",
@@ -126912,6 +126810,18 @@
       "country": "CZ",
       "status": "allocated",
       "allocated": "20101109"
+    },
+    "197377": {
+      "registry": "ripencc",
+      "country": "TR",
+      "status": "allocated",
+      "allocated": "20260520"
+    },
+    "197378": {
+      "registry": "ripencc",
+      "country": "GB",
+      "status": "allocated",
+      "allocated": "20260519"
     },
     "197379": {
       "registry": "ripencc",
@@ -126942,6 +126852,12 @@
       "country": "FR",
       "status": "allocated",
       "allocated": "20110729"
+    },
+    "197384": {
+      "registry": "ripencc",
+      "country": "US",
+      "status": "allocated",
+      "allocated": "20260519"
     },
     "197385": {
       "registry": "ripencc",
@@ -127039,6 +126955,18 @@
       "status": "allocated",
       "allocated": "20120410"
     },
+    "197401": {
+      "registry": "ripencc",
+      "country": "KZ",
+      "status": "allocated",
+      "allocated": "20260519"
+    },
+    "197402": {
+      "registry": "ripencc",
+      "country": "RO",
+      "status": "allocated",
+      "allocated": "20260519"
+    },
     "197403": {
       "registry": "ripencc",
       "country": "IS",
@@ -127087,6 +127015,12 @@
       "status": "allocated",
       "allocated": "20101119"
     },
+    "197411": {
+      "registry": "ripencc",
+      "country": "LV",
+      "status": "allocated",
+      "allocated": "20260519"
+    },
     "197412": {
       "registry": "ripencc",
       "country": "CZ",
@@ -127110,6 +127044,12 @@
       "country": "SI",
       "status": "allocated",
       "allocated": "20101119"
+    },
+    "197417": {
+      "registry": "ripencc",
+      "country": "LT",
+      "status": "allocated",
+      "allocated": "20260519"
     },
     "197418": {
       "registry": "ripencc",
@@ -127146,6 +127086,12 @@
       "country": "RS",
       "status": "allocated",
       "allocated": "20110914"
+    },
+    "197424": {
+      "registry": "ripencc",
+      "country": "RU",
+      "status": "allocated",
+      "allocated": "20260519"
     },
     "197425": {
       "registry": "ripencc",
@@ -127236,6 +127182,18 @@
       "country": "SI",
       "status": "allocated",
       "allocated": "20101201"
+    },
+    "197442": {
+      "registry": "ripencc",
+      "country": "LT",
+      "status": "allocated",
+      "allocated": "20260519"
+    },
+    "197443": {
+      "registry": "ripencc",
+      "country": "US",
+      "status": "allocated",
+      "allocated": "20260519"
     },
     "197444": {
       "registry": "ripencc",
@@ -127338,6 +127296,24 @@
       "country": "RU",
       "status": "allocated",
       "allocated": "20101210"
+    },
+    "197462": {
+      "registry": "ripencc",
+      "country": "GB",
+      "status": "allocated",
+      "allocated": "20260519"
+    },
+    "197463": {
+      "registry": "ripencc",
+      "country": "NO",
+      "status": "allocated",
+      "allocated": "20260519"
+    },
+    "197464": {
+      "registry": "ripencc",
+      "country": "TR",
+      "status": "allocated",
+      "allocated": "20260519"
     },
     "197465": {
       "registry": "ripencc",
@@ -127477,6 +127453,12 @@
       "status": "allocated",
       "allocated": "20230728"
     },
+    "197488": {
+      "registry": "ripencc",
+      "country": "DE",
+      "status": "allocated",
+      "allocated": "20260519"
+    },
     "197489": {
       "registry": "ripencc",
       "country": "RU",
@@ -127603,6 +127585,12 @@
       "status": "allocated",
       "allocated": "20110104"
     },
+    "197510": {
+      "registry": "ripencc",
+      "country": "RU",
+      "status": "allocated",
+      "allocated": "20260519"
+    },
     "197512": {
       "registry": "ripencc",
       "country": "UA",
@@ -127626,6 +127614,12 @@
       "country": "GR",
       "status": "allocated",
       "allocated": "20230727"
+    },
+    "197516": {
+      "registry": "ripencc",
+      "country": "IT",
+      "status": "allocated",
+      "allocated": "20260519"
     },
     "197517": {
       "registry": "ripencc",
@@ -127692,6 +127686,18 @@
       "country": "PL",
       "status": "allocated",
       "allocated": "20110120"
+    },
+    "197528": {
+      "registry": "ripencc",
+      "country": "VC",
+      "status": "allocated",
+      "allocated": "20260519"
+    },
+    "197529": {
+      "registry": "ripencc",
+      "country": "RU",
+      "status": "allocated",
+      "allocated": "20260519"
     },
     "197530": {
       "registry": "ripencc",
@@ -127782,6 +127788,12 @@
       "country": "PL",
       "status": "allocated",
       "allocated": "20110127"
+    },
+    "197545": {
+      "registry": "ripencc",
+      "country": "GB",
+      "status": "allocated",
+      "allocated": "20260515"
     },
     "197546": {
       "registry": "ripencc",
@@ -127927,6 +127939,12 @@
       "status": "allocated",
       "allocated": "20230726"
     },
+    "197570": {
+      "registry": "ripencc",
+      "country": "US",
+      "status": "allocated",
+      "allocated": "20260515"
+    },
     "197571": {
       "registry": "ripencc",
       "country": "RU",
@@ -127945,11 +127963,23 @@
       "status": "allocated",
       "allocated": "20110628"
     },
+    "197574": {
+      "registry": "ripencc",
+      "country": "GB",
+      "status": "allocated",
+      "allocated": "20260519"
+    },
     "197575": {
       "registry": "ripencc",
       "country": "UA",
       "status": "allocated",
       "allocated": "20110214"
+    },
+    "197576": {
+      "registry": "ripencc",
+      "country": "GB",
+      "status": "allocated",
+      "allocated": "20260515"
     },
     "197577": {
       "registry": "ripencc",
@@ -127987,6 +128017,12 @@
       "status": "allocated",
       "allocated": "20110215"
     },
+    "197583": {
+      "registry": "ripencc",
+      "country": "US",
+      "status": "allocated",
+      "allocated": "20260515"
+    },
     "197584": {
       "registry": "ripencc",
       "country": "CH",
@@ -128004,6 +128040,12 @@
       "country": "PL",
       "status": "allocated",
       "allocated": "20110215"
+    },
+    "197587": {
+      "registry": "ripencc",
+      "country": "ID",
+      "status": "allocated",
+      "allocated": "20260515"
     },
     "197588": {
       "registry": "ripencc",
@@ -128046,6 +128088,12 @@
       "country": "GB",
       "status": "allocated",
       "allocated": "20110218"
+    },
+    "197595": {
+      "registry": "ripencc",
+      "country": "GB",
+      "status": "allocated",
+      "allocated": "20260515"
     },
     "197596": {
       "registry": "ripencc",
@@ -128113,11 +128161,23 @@
       "status": "allocated",
       "allocated": "20230725"
     },
+    "197607": {
+      "registry": "ripencc",
+      "country": "RU",
+      "status": "allocated",
+      "allocated": "20260515"
+    },
     "197608": {
       "registry": "ripencc",
       "country": "PL",
       "status": "allocated",
       "allocated": "20111021"
+    },
+    "197609": {
+      "registry": "ripencc",
+      "country": "NL",
+      "status": "allocated",
+      "allocated": "20260515"
     },
     "197610": {
       "registry": "ripencc",
@@ -128130,6 +128190,18 @@
       "country": "EE",
       "status": "allocated",
       "allocated": "20110301"
+    },
+    "197612": {
+      "registry": "ripencc",
+      "country": "IN",
+      "status": "allocated",
+      "allocated": "20260513"
+    },
+    "197613": {
+      "registry": "ripencc",
+      "country": "GB",
+      "status": "allocated",
+      "allocated": "20260513"
     },
     "197614": {
       "registry": "ripencc",
@@ -128179,11 +128251,23 @@
       "status": "allocated",
       "allocated": "20110303"
     },
+    "197622": {
+      "registry": "ripencc",
+      "country": "GB",
+      "status": "allocated",
+      "allocated": "20260513"
+    },
     "197623": {
       "registry": "ripencc",
       "country": "SE",
       "status": "allocated",
       "allocated": "20110608"
+    },
+    "197624": {
+      "registry": "ripencc",
+      "country": "RU",
+      "status": "allocated",
+      "allocated": "20260513"
     },
     "197625": {
       "registry": "ripencc",
@@ -128299,11 +128383,23 @@
       "status": "allocated",
       "allocated": "20110620"
     },
+    "197644": {
+      "registry": "ripencc",
+      "country": "IT",
+      "status": "allocated",
+      "allocated": "20260513"
+    },
     "197645": {
       "registry": "ripencc",
       "country": "PL",
       "status": "allocated",
       "allocated": "20110310"
+    },
+    "197646": {
+      "registry": "ripencc",
+      "country": "CY",
+      "status": "allocated",
+      "allocated": "20260513"
     },
     "197647": {
       "registry": "ripencc",
@@ -128335,6 +128431,12 @@
       "status": "allocated",
       "allocated": "20110311"
     },
+    "197652": {
+      "registry": "ripencc",
+      "country": "DE",
+      "status": "allocated",
+      "allocated": "20260512"
+    },
     "197653": {
       "registry": "ripencc",
       "country": "FR",
@@ -128358,6 +128460,18 @@
       "country": "PL",
       "status": "allocated",
       "allocated": "20110315"
+    },
+    "197657": {
+      "registry": "ripencc",
+      "country": "CH",
+      "status": "allocated",
+      "allocated": "20260512"
+    },
+    "197658": {
+      "registry": "ripencc",
+      "country": "DE",
+      "status": "allocated",
+      "allocated": "20260512"
     },
     "197659": {
       "registry": "ripencc",
@@ -128395,6 +128509,12 @@
       "status": "allocated",
       "allocated": "20110629"
     },
+    "197666": {
+      "registry": "ripencc",
+      "country": "EE",
+      "status": "allocated",
+      "allocated": "20260512"
+    },
     "197667": {
       "registry": "ripencc",
       "country": "PL",
@@ -128412,6 +128532,12 @@
       "country": "GB",
       "status": "allocated",
       "allocated": "20110810"
+    },
+    "197670": {
+      "registry": "ripencc",
+      "country": "SE",
+      "status": "allocated",
+      "allocated": "20260508"
     },
     "197671": {
       "registry": "ripencc",
@@ -128436,6 +128562,18 @@
       "country": "LB",
       "status": "allocated",
       "allocated": "20110322"
+    },
+    "197675": {
+      "registry": "ripencc",
+      "country": "CY",
+      "status": "allocated",
+      "allocated": "20260508"
+    },
+    "197676": {
+      "registry": "ripencc",
+      "country": "FR",
+      "status": "allocated",
+      "allocated": "20260508"
     },
     "197677": {
       "registry": "ripencc",
@@ -128472,6 +128610,12 @@
       "country": "PL",
       "status": "allocated",
       "allocated": "20110324"
+    },
+    "197683": {
+      "registry": "ripencc",
+      "country": "EE",
+      "status": "allocated",
+      "allocated": "20260508"
     },
     "197684": {
       "registry": "ripencc",
@@ -128515,6 +128659,12 @@
       "status": "allocated",
       "allocated": "20110714"
     },
+    "197691": {
+      "registry": "ripencc",
+      "country": "US",
+      "status": "allocated",
+      "allocated": "20260508"
+    },
     "197692": {
       "registry": "ripencc",
       "country": "LU",
@@ -128551,11 +128701,23 @@
       "status": "allocated",
       "allocated": "20110329"
     },
+    "197698": {
+      "registry": "ripencc",
+      "country": "HU",
+      "status": "allocated",
+      "allocated": "20260508"
+    },
     "197699": {
       "registry": "ripencc",
       "country": "SM",
       "status": "allocated",
       "allocated": "20230720"
+    },
+    "197700": {
+      "registry": "ripencc",
+      "country": "DE",
+      "status": "allocated",
+      "allocated": "20260508"
     },
     "197701": {
       "registry": "ripencc",
@@ -128611,6 +128773,12 @@
       "status": "allocated",
       "allocated": "20110401"
     },
+    "197710": {
+      "registry": "ripencc",
+      "country": "IN",
+      "status": "allocated",
+      "allocated": "20260508"
+    },
     "197711": {
       "registry": "ripencc",
       "country": "DE",
@@ -128653,6 +128821,12 @@
       "status": "allocated",
       "allocated": "20110405"
     },
+    "197719": {
+      "registry": "ripencc",
+      "country": "RU",
+      "status": "allocated",
+      "allocated": "20260507"
+    },
     "197720": {
       "registry": "ripencc",
       "country": "TR",
@@ -128664,6 +128838,12 @@
       "country": "PL",
       "status": "allocated",
       "allocated": "20110405"
+    },
+    "197722": {
+      "registry": "ripencc",
+      "country": "PL",
+      "status": "allocated",
+      "allocated": "20260507"
     },
     "197724": {
       "registry": "ripencc",
@@ -128737,11 +128917,35 @@
       "status": "allocated",
       "allocated": "20110408"
     },
+    "197736": {
+      "registry": "ripencc",
+      "country": "IT",
+      "status": "allocated",
+      "allocated": "20260507"
+    },
+    "197737": {
+      "registry": "ripencc",
+      "country": "DE",
+      "status": "allocated",
+      "allocated": "20260507"
+    },
     "197738": {
       "registry": "ripencc",
       "country": "UA",
       "status": "allocated",
       "allocated": "20110411"
+    },
+    "197739": {
+      "registry": "ripencc",
+      "country": "AE",
+      "status": "allocated",
+      "allocated": "20260507"
+    },
+    "197740": {
+      "registry": "ripencc",
+      "country": "AT",
+      "status": "allocated",
+      "allocated": "20260507"
     },
     "197741": {
       "registry": "ripencc",
@@ -128785,6 +128989,12 @@
       "status": "allocated",
       "allocated": "20110412"
     },
+    "197749": {
+      "registry": "ripencc",
+      "country": "RU",
+      "status": "allocated",
+      "allocated": "20260507"
+    },
     "197750": {
       "registry": "ripencc",
       "country": "HU",
@@ -128797,11 +129007,23 @@
       "status": "allocated",
       "allocated": "20110413"
     },
+    "197752": {
+      "registry": "ripencc",
+      "country": "NG",
+      "status": "allocated",
+      "allocated": "20260507"
+    },
     "197753": {
       "registry": "ripencc",
       "country": "GB",
       "status": "allocated",
       "allocated": "20230717"
+    },
+    "197754": {
+      "registry": "ripencc",
+      "country": "NL",
+      "status": "allocated",
+      "allocated": "20260507"
     },
     "197755": {
       "registry": "ripencc",
@@ -128821,6 +129043,12 @@
       "status": "allocated",
       "allocated": "20230717"
     },
+    "197758": {
+      "registry": "ripencc",
+      "country": "GB",
+      "status": "allocated",
+      "allocated": "20260507"
+    },
     "197759": {
       "registry": "ripencc",
       "country": "DE",
@@ -128832,6 +129060,12 @@
       "country": "RU",
       "status": "allocated",
       "allocated": "20110418"
+    },
+    "197761": {
+      "registry": "ripencc",
+      "country": "RU",
+      "status": "allocated",
+      "allocated": "20260507"
     },
     "197762": {
       "registry": "ripencc",
@@ -128874,6 +129108,12 @@
       "country": "RU",
       "status": "allocated",
       "allocated": "20110421"
+    },
+    "197769": {
+      "registry": "ripencc",
+      "country": "US",
+      "status": "allocated",
+      "allocated": "20260506"
     },
     "197770": {
       "registry": "ripencc",
@@ -128929,6 +129169,12 @@
       "status": "allocated",
       "allocated": "20110428"
     },
+    "197779": {
+      "registry": "ripencc",
+      "country": "UZ",
+      "status": "allocated",
+      "allocated": "20260506"
+    },
     "197780": {
       "registry": "ripencc",
       "country": "RU",
@@ -128983,11 +129229,29 @@
       "status": "allocated",
       "allocated": "20110503"
     },
+    "197789": {
+      "registry": "ripencc",
+      "country": "CR",
+      "status": "allocated",
+      "allocated": "20260506"
+    },
     "197790": {
       "registry": "ripencc",
       "country": "PL",
       "status": "allocated",
       "allocated": "20110504"
+    },
+    "197791": {
+      "registry": "ripencc",
+      "country": "CH",
+      "status": "allocated",
+      "allocated": "20260506"
+    },
+    "197792": {
+      "registry": "ripencc",
+      "country": "HU",
+      "status": "allocated",
+      "allocated": "20260506"
     },
     "197793": {
       "registry": "ripencc",
@@ -129067,6 +129331,12 @@
       "status": "allocated",
       "allocated": "20110819"
     },
+    "197806": {
+      "registry": "ripencc",
+      "country": "CZ",
+      "status": "allocated",
+      "allocated": "20260506"
+    },
     "197807": {
       "registry": "ripencc",
       "country": "IT",
@@ -129084,6 +129354,12 @@
       "country": "PL",
       "status": "allocated",
       "allocated": "20110511"
+    },
+    "197810": {
+      "registry": "ripencc",
+      "country": "RU",
+      "status": "allocated",
+      "allocated": "20260506"
     },
     "197811": {
       "registry": "ripencc",
@@ -129109,11 +129385,23 @@
       "status": "allocated",
       "allocated": "20230713"
     },
+    "197815": {
+      "registry": "ripencc",
+      "country": "RU",
+      "status": "allocated",
+      "allocated": "20260506"
+    },
     "197816": {
       "registry": "ripencc",
       "country": "FR",
       "status": "allocated",
       "allocated": "20110513"
+    },
+    "197817": {
+      "registry": "ripencc",
+      "country": "CN",
+      "status": "allocated",
+      "allocated": "20260506"
     },
     "197818": {
       "registry": "ripencc",
@@ -129247,6 +129535,12 @@
       "status": "allocated",
       "allocated": "20110525"
     },
+    "197842": {
+      "registry": "ripencc",
+      "country": "SY",
+      "status": "allocated",
+      "allocated": "20260506"
+    },
     "197843": {
       "registry": "ripencc",
       "country": "SI",
@@ -129319,11 +129613,23 @@
       "status": "allocated",
       "allocated": "20110530"
     },
+    "197856": {
+      "registry": "ripencc",
+      "country": "BG",
+      "status": "allocated",
+      "allocated": "20260506"
+    },
     "197857": {
       "registry": "ripencc",
       "country": "RU",
       "status": "allocated",
       "allocated": "20110530"
+    },
+    "197858": {
+      "registry": "ripencc",
+      "country": "SA",
+      "status": "allocated",
+      "allocated": "20260506"
     },
     "197859": {
       "registry": "ripencc",
@@ -129337,11 +129643,23 @@
       "status": "allocated",
       "allocated": "20230707"
     },
+    "197861": {
+      "registry": "ripencc",
+      "country": "DK",
+      "status": "allocated",
+      "allocated": "20260506"
+    },
     "197862": {
       "registry": "ripencc",
       "country": "HU",
       "status": "allocated",
       "allocated": "20110531"
+    },
+    "197863": {
+      "registry": "ripencc",
+      "country": "PL",
+      "status": "allocated",
+      "allocated": "20260506"
     },
     "197864": {
       "registry": "ripencc",
@@ -129354,6 +129672,12 @@
       "country": "RU",
       "status": "allocated",
       "allocated": "20110930"
+    },
+    "197866": {
+      "registry": "ripencc",
+      "country": "FR",
+      "status": "allocated",
+      "allocated": "20260506"
     },
     "197867": {
       "registry": "ripencc",
@@ -129378,6 +129702,12 @@
       "country": "LV",
       "status": "allocated",
       "allocated": "20110603"
+    },
+    "197871": {
+      "registry": "ripencc",
+      "country": "TR",
+      "status": "allocated",
+      "allocated": "20260505"
     },
     "197872": {
       "registry": "ripencc",
@@ -129450,6 +129780,12 @@
       "country": "FR",
       "status": "allocated",
       "allocated": "20110609"
+    },
+    "197884": {
+      "registry": "ripencc",
+      "country": "US",
+      "status": "allocated",
+      "allocated": "20260505"
     },
     "197885": {
       "registry": "ripencc",
@@ -129535,6 +129871,12 @@
       "status": "allocated",
       "allocated": "20230706"
     },
+    "197900": {
+      "registry": "ripencc",
+      "country": "AU",
+      "status": "allocated",
+      "allocated": "20260505"
+    },
     "197901": {
       "registry": "ripencc",
       "country": "UA",
@@ -129553,11 +129895,23 @@
       "status": "allocated",
       "allocated": "20110621"
     },
+    "197904": {
+      "registry": "ripencc",
+      "country": "US",
+      "status": "allocated",
+      "allocated": "20260505"
+    },
     "197905": {
       "registry": "ripencc",
       "country": "RU",
       "status": "allocated",
       "allocated": "20110621"
+    },
+    "197906": {
+      "registry": "ripencc",
+      "country": "GR",
+      "status": "allocated",
+      "allocated": "20260505"
     },
     "197907": {
       "registry": "ripencc",
@@ -129661,6 +130015,12 @@
       "status": "allocated",
       "allocated": "20110629"
     },
+    "197924": {
+      "registry": "ripencc",
+      "country": "GB",
+      "status": "allocated",
+      "allocated": "20260505"
+    },
     "197925": {
       "registry": "ripencc",
       "country": "LU",
@@ -129739,6 +130099,18 @@
       "status": "allocated",
       "allocated": "20230704"
     },
+    "197938": {
+      "registry": "ripencc",
+      "country": "DK",
+      "status": "allocated",
+      "allocated": "20260505"
+    },
+    "197939": {
+      "registry": "ripencc",
+      "country": "CZ",
+      "status": "allocated",
+      "allocated": "20260505"
+    },
     "197940": {
       "registry": "ripencc",
       "country": "PL",
@@ -129798,6 +130170,18 @@
       "country": "BE",
       "status": "allocated",
       "allocated": "20110713"
+    },
+    "197950": {
+      "registry": "ripencc",
+      "country": "ES",
+      "status": "allocated",
+      "allocated": "20260505"
+    },
+    "197951": {
+      "registry": "ripencc",
+      "country": "TR",
+      "status": "allocated",
+      "allocated": "20260505"
     },
     "197952": {
       "registry": "ripencc",
@@ -129901,6 +130285,12 @@
       "status": "allocated",
       "allocated": "20110726"
     },
+    "197970": {
+      "registry": "ripencc",
+      "country": "NL",
+      "status": "allocated",
+      "allocated": "20260505"
+    },
     "197971": {
       "registry": "ripencc",
       "country": "RU",
@@ -129918,6 +130308,12 @@
       "country": "IS",
       "status": "allocated",
       "allocated": "20110727"
+    },
+    "197974": {
+      "registry": "ripencc",
+      "country": "EE",
+      "status": "allocated",
+      "allocated": "20260505"
     },
     "197975": {
       "registry": "ripencc",
@@ -130039,6 +130435,18 @@
       "status": "allocated",
       "allocated": "20110810"
     },
+    "197995": {
+      "registry": "ripencc",
+      "country": "FI",
+      "status": "allocated",
+      "allocated": "20260505"
+    },
+    "197996": {
+      "registry": "ripencc",
+      "country": "DK",
+      "status": "allocated",
+      "allocated": "20260505"
+    },
     "197997": {
       "registry": "ripencc",
       "country": "BG",
@@ -130140,6 +130548,12 @@
       "country": "PL",
       "status": "allocated",
       "allocated": "20110825"
+    },
+    "198015": {
+      "registry": "ripencc",
+      "country": "US",
+      "status": "allocated",
+      "allocated": "20260504"
     },
     "198016": {
       "registry": "ripencc",
@@ -130273,6 +130687,12 @@
       "status": "allocated",
       "allocated": "20230623"
     },
+    "198038": {
+      "registry": "ripencc",
+      "country": "PL",
+      "status": "allocated",
+      "allocated": "20260504"
+    },
     "198039": {
       "registry": "ripencc",
       "country": "RU",
@@ -130369,6 +130789,12 @@
       "status": "allocated",
       "allocated": "20110915"
     },
+    "198055": {
+      "registry": "ripencc",
+      "country": "US",
+      "status": "allocated",
+      "allocated": "20260504"
+    },
     "198056": {
       "registry": "ripencc",
       "country": "RU",
@@ -130416,6 +130842,12 @@
       "country": "GB",
       "status": "allocated",
       "allocated": "20110921"
+    },
+    "198064": {
+      "registry": "ripencc",
+      "country": "GB",
+      "status": "allocated",
+      "allocated": "20260504"
     },
     "198065": {
       "registry": "ripencc",
@@ -130477,11 +130909,35 @@
       "status": "allocated",
       "allocated": "20110923"
     },
+    "198075": {
+      "registry": "ripencc",
+      "country": "GB",
+      "status": "allocated",
+      "allocated": "20260504"
+    },
     "198076": {
       "registry": "ripencc",
       "country": "RU",
       "status": "allocated",
       "allocated": "20110926"
+    },
+    "198077": {
+      "registry": "ripencc",
+      "country": "AE",
+      "status": "allocated",
+      "allocated": "20260504"
+    },
+    "198078": {
+      "registry": "ripencc",
+      "country": "CN",
+      "status": "allocated",
+      "allocated": "20260504"
+    },
+    "198079": {
+      "registry": "ripencc",
+      "country": "IT",
+      "status": "allocated",
+      "allocated": "20260504"
     },
     "198080": {
       "registry": "ripencc",
@@ -136581,7 +137037,7 @@
     },
     "199124": {
       "registry": "ripencc",
-      "country": "NZ",
+      "country": "HU",
       "status": "allocated",
       "allocated": "20230501"
     },
@@ -138973,6 +139429,12 @@
       "status": "allocated",
       "allocated": "20121205"
     },
+    "199531": {
+      "registry": "ripencc",
+      "country": "TR",
+      "status": "allocated",
+      "allocated": "20260518"
+    },
     "199532": {
       "registry": "ripencc",
       "country": "IT",
@@ -139080,6 +139542,12 @@
       "country": "RU",
       "status": "allocated",
       "allocated": "20121128"
+    },
+    "199550": {
+      "registry": "ripencc",
+      "country": "GB",
+      "status": "allocated",
+      "allocated": "20260507"
     },
     "199551": {
       "registry": "ripencc",
@@ -140211,7 +140679,7 @@
     },
     "199746": {
       "registry": "ripencc",
-      "country": "DE",
+      "country": "US",
       "status": "allocated",
       "allocated": "20260325"
     },
@@ -140428,12 +140896,6 @@
     "199784": {
       "registry": "ripencc",
       "country": "SK",
-      "status": "allocated",
-      "allocated": "20230221"
-    },
-    "199785": {
-      "registry": "ripencc",
-      "country": "GB",
       "status": "allocated",
       "allocated": "20230221"
     },
@@ -142368,12 +142830,6 @@
       "country": "AT",
       "status": "allocated",
       "allocated": "20131007"
-    },
-    "200113": {
-      "registry": "ripencc",
-      "country": "GB",
-      "status": "allocated",
-      "allocated": "20230127"
     },
     "200114": {
       "registry": "ripencc",
@@ -149551,12 +150007,6 @@
       "status": "allocated",
       "allocated": "20221117"
     },
-    "201351": {
-      "registry": "ripencc",
-      "country": "GB",
-      "status": "allocated",
-      "allocated": "20221117"
-    },
     "201352": {
       "registry": "ripencc",
       "country": "IT",
@@ -149829,7 +150279,7 @@
     },
     "201398": {
       "registry": "ripencc",
-      "country": "GB",
+      "country": "US",
       "status": "allocated",
       "allocated": "20260206"
     },
@@ -150066,6 +150516,12 @@
       "country": "DE",
       "status": "allocated",
       "allocated": "20141028"
+    },
+    "201439": {
+      "registry": "ripencc",
+      "country": "NO",
+      "status": "allocated",
+      "allocated": "20260518"
     },
     "201440": {
       "registry": "ripencc",
@@ -152106,12 +152562,6 @@
       "country": "KN",
       "status": "allocated",
       "allocated": "20260202"
-    },
-    "201785": {
-      "registry": "ripencc",
-      "country": "DE",
-      "status": "allocated",
-      "allocated": "20140714"
     },
     "201786": {
       "registry": "ripencc",
@@ -155155,12 +155605,6 @@
       "status": "allocated",
       "allocated": "20180608"
     },
-    "202298": {
-      "registry": "ripencc",
-      "country": "DE",
-      "status": "allocated",
-      "allocated": "20180608"
-    },
     "202299": {
       "registry": "ripencc",
       "country": "KZ",
@@ -155172,6 +155616,12 @@
       "country": "CA",
       "status": "allocated",
       "allocated": "20180607"
+    },
+    "202301": {
+      "registry": "ripencc",
+      "country": "IL",
+      "status": "allocated",
+      "allocated": "20260518"
     },
     "202302": {
       "registry": "ripencc",
@@ -158053,6 +158503,12 @@
       "status": "allocated",
       "allocated": "20160602"
     },
+    "202793": {
+      "registry": "ripencc",
+      "country": "RU",
+      "status": "allocated",
+      "allocated": "20260513"
+    },
     "202794": {
       "registry": "ripencc",
       "country": "NL",
@@ -159121,12 +159577,6 @@
       "status": "allocated",
       "allocated": "20160421"
     },
-    "202980": {
-      "registry": "ripencc",
-      "country": "UA",
-      "status": "allocated",
-      "allocated": "20160421"
-    },
     "202981": {
       "registry": "ripencc",
       "country": "PT",
@@ -160050,12 +160500,6 @@
       "country": "PL",
       "status": "allocated",
       "allocated": "20160322"
-    },
-    "203141": {
-      "registry": "ripencc",
-      "country": "GB",
-      "status": "allocated",
-      "allocated": "20220826"
     },
     "203142": {
       "registry": "ripencc",
@@ -163189,6 +163633,12 @@
       "status": "allocated",
       "allocated": "20151120"
     },
+    "203676": {
+      "registry": "ripencc",
+      "country": "EE",
+      "status": "allocated",
+      "allocated": "20260518"
+    },
     "203677": {
       "registry": "ripencc",
       "country": "PL",
@@ -165757,6 +166207,12 @@
       "status": "allocated",
       "allocated": "20251103"
     },
+    "204116": {
+      "registry": "ripencc",
+      "country": "GB",
+      "status": "allocated",
+      "allocated": "20260519"
+    },
     "204118": {
       "registry": "ripencc",
       "country": "IT",
@@ -166537,6 +166993,12 @@
       "status": "allocated",
       "allocated": "20220630"
     },
+    "204248": {
+      "registry": "ripencc",
+      "country": "ES",
+      "status": "allocated",
+      "allocated": "20260518"
+    },
     "204249": {
       "registry": "ripencc",
       "country": "IQ",
@@ -166686,6 +167148,12 @@
       "country": "DK",
       "status": "allocated",
       "allocated": "20150713"
+    },
+    "204275": {
+      "registry": "ripencc",
+      "country": "HU",
+      "status": "allocated",
+      "allocated": "20260520"
     },
     "204276": {
       "registry": "ripencc",
@@ -167874,6 +168342,12 @@
       "country": "SE",
       "status": "allocated",
       "allocated": "20180305"
+    },
+    "204476": {
+      "registry": "ripencc",
+      "country": "UA",
+      "status": "allocated",
+      "allocated": "20260518"
     },
     "204477": {
       "registry": "ripencc",
@@ -169267,6 +169741,12 @@
       "status": "allocated",
       "allocated": "20220613"
     },
+    "204711": {
+      "registry": "ripencc",
+      "country": "GB",
+      "status": "allocated",
+      "allocated": "20260515"
+    },
     "204712": {
       "registry": "ripencc",
       "country": "NO",
@@ -170340,6 +170820,12 @@
       "country": "UA",
       "status": "allocated",
       "allocated": "20171213"
+    },
+    "204893": {
+      "registry": "ripencc",
+      "country": "NL",
+      "status": "allocated",
+      "allocated": "20260507"
     },
     "204894": {
       "registry": "ripencc",
@@ -172426,12 +172912,6 @@
     "205251": {
       "registry": "ripencc",
       "country": "SA",
-      "status": "allocated",
-      "allocated": "20171006"
-    },
-    "205252": {
-      "registry": "ripencc",
-      "country": "US",
       "status": "allocated",
       "allocated": "20171006"
     },
@@ -176083,12 +176563,6 @@
       "status": "allocated",
       "allocated": "20170515"
     },
-    "205878": {
-      "registry": "ripencc",
-      "country": "GB",
-      "status": "allocated",
-      "allocated": "20220413"
-    },
     "205879": {
       "registry": "ripencc",
       "country": "PL",
@@ -178717,6 +179191,12 @@
       "status": "allocated",
       "allocated": "20170210"
     },
+    "206326": {
+      "registry": "ripencc",
+      "country": "NL",
+      "status": "allocated",
+      "allocated": "20260512"
+    },
     "206327": {
       "registry": "ripencc",
       "country": "CH",
@@ -180529,6 +181009,12 @@
       "status": "allocated",
       "allocated": "20180423"
     },
+    "206639": {
+      "registry": "ripencc",
+      "country": "RS",
+      "status": "allocated",
+      "allocated": "20260513"
+    },
     "206640": {
       "registry": "ripencc",
       "country": "PL",
@@ -180780,12 +181266,6 @@
       "country": "CZ",
       "status": "allocated",
       "allocated": "20180514"
-    },
-    "206684": {
-      "registry": "ripencc",
-      "country": "RU",
-      "status": "allocated",
-      "allocated": "20161124"
     },
     "206685": {
       "registry": "ripencc",
@@ -181806,6 +182286,12 @@
       "country": "CH",
       "status": "allocated",
       "allocated": "20161021"
+    },
+    "206858": {
+      "registry": "ripencc",
+      "country": "BG",
+      "status": "allocated",
+      "allocated": "20260520"
     },
     "206859": {
       "registry": "ripencc",
@@ -183135,7 +183621,7 @@
     },
     "207083": {
       "registry": "ripencc",
-      "country": "NL",
+      "country": "EE",
       "status": "allocated",
       "allocated": "20180612"
     },
@@ -183438,6 +183924,12 @@
       "country": "US",
       "status": "allocated",
       "allocated": "20160824"
+    },
+    "207135": {
+      "registry": "ripencc",
+      "country": "GB",
+      "status": "allocated",
+      "allocated": "20260504"
     },
     "207136": {
       "registry": "ripencc",
@@ -187507,12 +187999,6 @@
       "status": "allocated",
       "allocated": "20220307"
     },
-    "207834": {
-      "registry": "ripencc",
-      "country": "DE",
-      "status": "allocated",
-      "allocated": "20191119"
-    },
     "207835": {
       "registry": "ripencc",
       "country": "TR",
@@ -187951,12 +188437,6 @@
       "status": "allocated",
       "allocated": "20191105"
     },
-    "207917": {
-      "registry": "ripencc",
-      "country": "LU",
-      "status": "allocated",
-      "allocated": "20191105"
-    },
     "207919": {
       "registry": "ripencc",
       "country": "SE",
@@ -188278,12 +188758,6 @@
     "207973": {
       "registry": "ripencc",
       "country": "PL",
-      "status": "allocated",
-      "allocated": "20191023"
-    },
-    "207974": {
-      "registry": "ripencc",
-      "country": "ES",
       "status": "allocated",
       "allocated": "20191023"
     },
@@ -190339,6 +190813,12 @@
       "status": "allocated",
       "allocated": "20190823"
     },
+    "208333": {
+      "registry": "ripencc",
+      "country": "NL",
+      "status": "allocated",
+      "allocated": "20260512"
+    },
     "208334": {
       "registry": "ripencc",
       "country": "UA",
@@ -190843,6 +191323,18 @@
       "status": "allocated",
       "allocated": "20190807"
     },
+    "208420": {
+      "registry": "ripencc",
+      "country": "PL",
+      "status": "allocated",
+      "allocated": "20260515"
+    },
+    "208421": {
+      "registry": "ripencc",
+      "country": "FR",
+      "status": "allocated",
+      "allocated": "20260512"
+    },
     "208422": {
       "registry": "ripencc",
       "country": "CZ",
@@ -191065,6 +191557,12 @@
       "status": "allocated",
       "allocated": "20190730"
     },
+    "208462": {
+      "registry": "ripencc",
+      "country": "US",
+      "status": "allocated",
+      "allocated": "20260507"
+    },
     "208463": {
       "registry": "ripencc",
       "country": "DE",
@@ -191113,6 +191611,12 @@
       "status": "allocated",
       "allocated": "20190730"
     },
+    "208471": {
+      "registry": "ripencc",
+      "country": "SE",
+      "status": "allocated",
+      "allocated": "20260512"
+    },
     "208472": {
       "registry": "ripencc",
       "country": "SA",
@@ -191136,6 +191640,12 @@
       "country": "RO",
       "status": "allocated",
       "allocated": "20250515"
+    },
+    "208476": {
+      "registry": "ripencc",
+      "country": "IT",
+      "status": "allocated",
+      "allocated": "20260513"
     },
     "208477": {
       "registry": "ripencc",
@@ -191184,6 +191694,12 @@
       "country": "DE",
       "status": "allocated",
       "allocated": "20190725"
+    },
+    "208485": {
+      "registry": "ripencc",
+      "country": "GB",
+      "status": "allocated",
+      "allocated": "20260511"
     },
     "208486": {
       "registry": "ripencc",
@@ -191905,6 +192421,12 @@
       "status": "allocated",
       "allocated": "20190704"
     },
+    "208609": {
+      "registry": "ripencc",
+      "country": "RU",
+      "status": "allocated",
+      "allocated": "20260520"
+    },
     "208610": {
       "registry": "ripencc",
       "country": "ME",
@@ -192186,12 +192708,6 @@
       "country": "RU",
       "status": "allocated",
       "allocated": "20220210"
-    },
-    "208658": {
-      "registry": "ripencc",
-      "country": "DE",
-      "status": "allocated",
-      "allocated": "20190627"
     },
     "208659": {
       "registry": "ripencc",
@@ -192703,6 +193219,12 @@
       "status": "allocated",
       "allocated": "20190611"
     },
+    "208749": {
+      "registry": "ripencc",
+      "country": "RU",
+      "status": "allocated",
+      "allocated": "20260511"
+    },
     "208750": {
       "registry": "ripencc",
       "country": "PL",
@@ -192828,6 +193350,12 @@
       "country": "IM",
       "status": "allocated",
       "allocated": "20190607"
+    },
+    "208771": {
+      "registry": "ripencc",
+      "country": "NL",
+      "status": "allocated",
+      "allocated": "20260512"
     },
     "208772": {
       "registry": "ripencc",
@@ -193171,6 +193699,12 @@
       "status": "allocated",
       "allocated": "20190528"
     },
+    "208831": {
+      "registry": "ripencc",
+      "country": "UZ",
+      "status": "allocated",
+      "allocated": "20260513"
+    },
     "208832": {
       "registry": "ripencc",
       "country": "EE",
@@ -193278,6 +193812,12 @@
       "country": "DE",
       "status": "allocated",
       "allocated": "20190524"
+    },
+    "208850": {
+      "registry": "ripencc",
+      "country": "NL",
+      "status": "allocated",
+      "allocated": "20260511"
     },
     "208851": {
       "registry": "ripencc",
@@ -193948,12 +194488,6 @@
     "208969": {
       "registry": "ripencc",
       "country": "RU",
-      "status": "allocated",
-      "allocated": "20250507"
-    },
-    "208970": {
-      "registry": "ripencc",
-      "country": "GB",
       "status": "allocated",
       "allocated": "20250507"
     },
@@ -194983,6 +195517,12 @@
       "status": "allocated",
       "allocated": "20190328"
     },
+    "209149": {
+      "registry": "ripencc",
+      "country": "GB",
+      "status": "allocated",
+      "allocated": "20260511"
+    },
     "209150": {
       "registry": "ripencc",
       "country": "GR",
@@ -195639,7 +196179,7 @@
     },
     "209265": {
       "registry": "ripencc",
-      "country": "ES",
+      "country": "AD",
       "status": "allocated",
       "allocated": "20250507"
     },
@@ -196345,6 +196885,12 @@
       "status": "allocated",
       "allocated": "20190219"
     },
+    "209389": {
+      "registry": "ripencc",
+      "country": "IN",
+      "status": "allocated",
+      "allocated": "20260519"
+    },
     "209390": {
       "registry": "ripencc",
       "country": "NL",
@@ -196444,12 +196990,6 @@
     "209408": {
       "registry": "ripencc",
       "country": "IT",
-      "status": "allocated",
-      "allocated": "20190214"
-    },
-    "209409": {
-      "registry": "ripencc",
-      "country": "PL",
       "status": "allocated",
       "allocated": "20190214"
     },
@@ -197965,12 +198505,6 @@
       "status": "allocated",
       "allocated": "20181227"
     },
-    "209668": {
-      "registry": "ripencc",
-      "country": "SE",
-      "status": "allocated",
-      "allocated": "20250428"
-    },
     "209669": {
       "registry": "ripencc",
       "country": "GB",
@@ -198451,6 +198985,12 @@
       "status": "allocated",
       "allocated": "20181211"
     },
+    "209750": {
+      "registry": "ripencc",
+      "country": "GB",
+      "status": "allocated",
+      "allocated": "20260504"
+    },
     "209751": {
       "registry": "ripencc",
       "country": "RU",
@@ -198486,6 +199026,12 @@
       "country": "GB",
       "status": "allocated",
       "allocated": "20220629"
+    },
+    "209757": {
+      "registry": "ripencc",
+      "country": "IT",
+      "status": "allocated",
+      "allocated": "20260511"
     },
     "209758": {
       "registry": "ripencc",
@@ -200233,6 +200779,12 @@
       "status": "allocated",
       "allocated": "20181017"
     },
+    "210057": {
+      "registry": "ripencc",
+      "country": "IT",
+      "status": "allocated",
+      "allocated": "20260518"
+    },
     "210058": {
       "registry": "ripencc",
       "country": "BG",
@@ -200658,6 +201210,12 @@
       "country": "AM",
       "status": "allocated",
       "allocated": "20181004"
+    },
+    "210132": {
+      "registry": "ripencc",
+      "country": "DE",
+      "status": "allocated",
+      "allocated": "20260518"
     },
     "210133": {
       "registry": "ripencc",
@@ -201132,12 +201690,6 @@
       "country": "DE",
       "status": "allocated",
       "allocated": "20180918"
-    },
-    "210215": {
-      "registry": "ripencc",
-      "country": "US",
-      "status": "allocated",
-      "allocated": "20250521"
     },
     "210216": {
       "registry": "ripencc",
@@ -203161,6 +203713,12 @@
       "status": "allocated",
       "allocated": "20211104"
     },
+    "210570": {
+      "registry": "ripencc",
+      "country": "IR",
+      "status": "allocated",
+      "allocated": "20260518"
+    },
     "210571": {
       "registry": "ripencc",
       "country": "IR",
@@ -204826,12 +205384,6 @@
     "210855": {
       "registry": "ripencc",
       "country": "FR",
-      "status": "allocated",
-      "allocated": "20210824"
-    },
-    "210856": {
-      "registry": "ripencc",
-      "country": "NL",
       "status": "allocated",
       "allocated": "20210824"
     },
@@ -206641,12 +207193,6 @@
       "status": "allocated",
       "allocated": "20210611"
     },
-    "211177": {
-      "registry": "ripencc",
-      "country": "NL",
-      "status": "allocated",
-      "allocated": "20210611"
-    },
     "211178": {
       "registry": "ripencc",
       "country": "GB",
@@ -208296,6 +208842,12 @@
       "country": "SA",
       "status": "allocated",
       "allocated": "20250331"
+    },
+    "211460": {
+      "registry": "ripencc",
+      "country": "GB",
+      "status": "allocated",
+      "allocated": "20260518"
     },
     "211461": {
       "registry": "ripencc",
@@ -212025,7 +212577,7 @@
     },
     "212112": {
       "registry": "ripencc",
-      "country": "RU",
+      "country": "FI",
       "status": "allocated",
       "allocated": "20250519"
     },
@@ -215509,6 +216061,12 @@
       "status": "allocated",
       "allocated": "20201218"
     },
+    "212720": {
+      "registry": "ripencc",
+      "country": "FR",
+      "status": "allocated",
+      "allocated": "20260519"
+    },
     "212721": {
       "registry": "ripencc",
       "country": "ES",
@@ -215905,6 +216463,12 @@
       "status": "allocated",
       "allocated": "20200814"
     },
+    "212789": {
+      "registry": "ripencc",
+      "country": "US",
+      "status": "allocated",
+      "allocated": "20260515"
+    },
     "212790": {
       "registry": "ripencc",
       "country": "UA",
@@ -216265,12 +216829,6 @@
       "status": "allocated",
       "allocated": "20210707"
     },
-    "212852": {
-      "registry": "ripencc",
-      "country": "GB",
-      "status": "allocated",
-      "allocated": "20200729"
-    },
     "212853": {
       "registry": "ripencc",
       "country": "LT",
@@ -216412,12 +216970,6 @@
     "212877": {
       "registry": "ripencc",
       "country": "NL",
-      "status": "allocated",
-      "allocated": "20200723"
-    },
-    "212878": {
-      "registry": "ripencc",
-      "country": "BE",
       "status": "allocated",
       "allocated": "20200723"
     },
@@ -217471,6 +218023,12 @@
       "status": "allocated",
       "allocated": "20200619"
     },
+    "213058": {
+      "registry": "ripencc",
+      "country": "IN",
+      "status": "allocated",
+      "allocated": "20260512"
+    },
     "213059": {
       "registry": "ripencc",
       "country": "CH",
@@ -218322,12 +218880,6 @@
       "country": "DE",
       "status": "allocated",
       "allocated": "20200520"
-    },
-    "213205": {
-      "registry": "ripencc",
-      "country": "MH",
-      "status": "allocated",
-      "allocated": "20220817"
     },
     "213206": {
       "registry": "ripencc",
@@ -221263,6 +221815,12 @@
       "status": "allocated",
       "allocated": "20241210"
     },
+    "213728": {
+      "registry": "ripencc",
+      "country": "EE",
+      "status": "allocated",
+      "allocated": "20260518"
+    },
     "213729": {
       "registry": "ripencc",
       "country": "GB",
@@ -221430,6 +221988,12 @@
       "country": "IR",
       "status": "allocated",
       "allocated": "20241204"
+    },
+    "213760": {
+      "registry": "ripencc",
+      "country": "GE",
+      "status": "allocated",
+      "allocated": "20260518"
     },
     "213761": {
       "registry": "ripencc",
@@ -222289,6 +222853,12 @@
       "status": "allocated",
       "allocated": "20241106"
     },
+    "213915": {
+      "registry": "ripencc",
+      "country": "GB",
+      "status": "allocated",
+      "allocated": "20260511"
+    },
     "213916": {
       "registry": "ripencc",
       "country": "IR",
@@ -222751,6 +223321,12 @@
       "status": "allocated",
       "allocated": "20241021"
     },
+    "214001": {
+      "registry": "ripencc",
+      "country": "TJ",
+      "status": "allocated",
+      "allocated": "20260513"
+    },
     "214002": {
       "registry": "ripencc",
       "country": "DE",
@@ -223050,6 +223626,12 @@
       "country": "CA",
       "status": "allocated",
       "allocated": "20241010"
+    },
+    "214055": {
+      "registry": "ripencc",
+      "country": "IE",
+      "status": "allocated",
+      "allocated": "20260518"
     },
     "214056": {
       "registry": "ripencc",
@@ -223515,7 +224097,7 @@
     },
     "214140": {
       "registry": "ripencc",
-      "country": "TR",
+      "country": "US",
       "status": "allocated",
       "allocated": "20240925"
     },
@@ -224053,6 +224635,12 @@
       "status": "allocated",
       "allocated": "20240910"
     },
+    "214236": {
+      "registry": "ripencc",
+      "country": "NL",
+      "status": "allocated",
+      "allocated": "20260506"
+    },
     "214237": {
       "registry": "ripencc",
       "country": "CH",
@@ -224178,6 +224766,12 @@
       "country": "RU",
       "status": "allocated",
       "allocated": "20240905"
+    },
+    "214258": {
+      "registry": "ripencc",
+      "country": "PL",
+      "status": "allocated",
+      "allocated": "20260511"
     },
     "214259": {
       "registry": "ripencc",
@@ -224755,6 +225349,12 @@
       "status": "allocated",
       "allocated": "20240814"
     },
+    "214362": {
+      "registry": "ripencc",
+      "country": "AE",
+      "status": "allocated",
+      "allocated": "20260518"
+    },
     "214363": {
       "registry": "ripencc",
       "country": "PL",
@@ -224892,6 +225492,12 @@
       "country": "SE",
       "status": "allocated",
       "allocated": "20240808"
+    },
+    "214388": {
+      "registry": "ripencc",
+      "country": "US",
+      "status": "allocated",
+      "allocated": "20260507"
     },
     "214389": {
       "registry": "ripencc",
@@ -225571,6 +226177,12 @@
       "status": "allocated",
       "allocated": "20240716"
     },
+    "214516": {
+      "registry": "ripencc",
+      "country": "ES",
+      "status": "allocated",
+      "allocated": "20260504"
+    },
     "214517": {
       "registry": "ripencc",
       "country": "DE",
@@ -225936,12 +226548,6 @@
       "country": "TR",
       "status": "allocated",
       "allocated": "20240702"
-    },
-    "214597": {
-      "registry": "ripencc",
-      "country": "RU",
-      "status": "allocated",
-      "allocated": "20240701"
     },
     "214598": {
       "registry": "ripencc",
@@ -226333,6 +226939,12 @@
       "status": "allocated",
       "allocated": "20240619"
     },
+    "214671": {
+      "registry": "ripencc",
+      "country": "TR",
+      "status": "allocated",
+      "allocated": "20260519"
+    },
     "214673": {
       "registry": "ripencc",
       "country": "NL",
@@ -226422,6 +227034,12 @@
       "country": "NL",
       "status": "allocated",
       "allocated": "20240617"
+    },
+    "214690": {
+      "registry": "ripencc",
+      "country": "LT",
+      "status": "allocated",
+      "allocated": "20260519"
     },
     "214691": {
       "registry": "ripencc",
@@ -226698,6 +227316,12 @@
       "country": "HK",
       "status": "allocated",
       "allocated": "20240607"
+    },
+    "214745": {
+      "registry": "ripencc",
+      "country": "RU",
+      "status": "allocated",
+      "allocated": "20260506"
     },
     "214747": {
       "registry": "ripencc",
@@ -228229,12 +228853,6 @@
       "status": "allocated",
       "allocated": "20240426"
     },
-    "215026": {
-      "registry": "ripencc",
-      "country": "IT",
-      "status": "allocated",
-      "allocated": "20240426"
-    },
     "215027": {
       "registry": "ripencc",
       "country": "TR",
@@ -228426,6 +229044,12 @@
       "country": "DE",
       "status": "allocated",
       "allocated": "20240422"
+    },
+    "215062": {
+      "registry": "ripencc",
+      "country": "CN",
+      "status": "allocated",
+      "allocated": "20260518"
     },
     "215063": {
       "registry": "ripencc",
@@ -228634,12 +229258,6 @@
     "215100": {
       "registry": "ripencc",
       "country": "BY",
-      "status": "allocated",
-      "allocated": "20240415"
-    },
-    "215101": {
-      "registry": "ripencc",
-      "country": "IL",
       "status": "allocated",
       "allocated": "20240415"
     },
@@ -229074,12 +229692,6 @@
       "country": "KZ",
       "status": "allocated",
       "allocated": "20250626"
-    },
-    "215184": {
-      "registry": "ripencc",
-      "country": "GB",
-      "status": "allocated",
-      "allocated": "20240402"
     },
     "215185": {
       "registry": "ripencc",
@@ -231079,6 +231691,12 @@
       "status": "allocated",
       "allocated": "20250203"
     },
+    "215550": {
+      "registry": "ripencc",
+      "country": "RU",
+      "status": "allocated",
+      "allocated": "20260518"
+    },
     "215551": {
       "registry": "ripencc",
       "country": "GB",
@@ -231262,12 +231880,6 @@
     "215584": {
       "registry": "ripencc",
       "country": "RU",
-      "status": "allocated",
-      "allocated": "20240202"
-    },
-    "215585": {
-      "registry": "ripencc",
-      "country": "TR",
       "status": "allocated",
       "allocated": "20240202"
     },
@@ -231505,6 +232117,12 @@
       "status": "allocated",
       "allocated": "20240129"
     },
+    "215630": {
+      "registry": "ripencc",
+      "country": "IT",
+      "status": "allocated",
+      "allocated": "20260505"
+    },
     "215631": {
       "registry": "ripencc",
       "country": "GB",
@@ -231696,6 +232314,12 @@
       "country": "FR",
       "status": "allocated",
       "allocated": "20240123"
+    },
+    "215664": {
+      "registry": "ripencc",
+      "country": "VN",
+      "status": "allocated",
+      "allocated": "20260518"
     },
     "215665": {
       "registry": "ripencc",
@@ -234421,6 +235045,12 @@
       "status": "allocated",
       "allocated": "20231016"
     },
+    "216150": {
+      "registry": "ripencc",
+      "country": "KZ",
+      "status": "allocated",
+      "allocated": "20260513"
+    },
     "216151": {
       "registry": "ripencc",
       "country": "CY",
@@ -234552,6 +235182,12 @@
       "country": "CN",
       "status": "allocated",
       "allocated": "20231011"
+    },
+    "216174": {
+      "registry": "ripencc",
+      "country": "US",
+      "status": "allocated",
+      "allocated": "20260513"
     },
     "216175": {
       "registry": "ripencc",
@@ -234786,12 +235422,6 @@
       "country": "CH",
       "status": "allocated",
       "allocated": "20250828"
-    },
-    "216221": {
-      "registry": "ripencc",
-      "country": "IT",
-      "status": "allocated",
-      "allocated": "20240410"
     },
     "216222": {
       "registry": "ripencc",
@@ -235123,6 +235753,12 @@
       "status": "allocated",
       "allocated": "20230920"
     },
+    "216281": {
+      "registry": "ripencc",
+      "country": "IR",
+      "status": "allocated",
+      "allocated": "20260512"
+    },
     "216282": {
       "registry": "ripencc",
       "country": "DE",
@@ -235278,6 +235914,12 @@
       "country": "FR",
       "status": "allocated",
       "allocated": "20240318"
+    },
+    "216311": {
+      "registry": "ripencc",
+      "country": "GB",
+      "status": "allocated",
+      "allocated": "20260504"
     },
     "216312": {
       "registry": "ripencc",

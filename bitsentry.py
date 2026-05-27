@@ -822,7 +822,18 @@ def main() -> int:
         "--days",
         type=int,
         default=30,
-        help="Number of days back to fetch CVEs (default: 30)",
+        help="Publication window for bootstrap when DB is empty (default: 30)",
+    )
+    cve_db_parser.add_argument(
+        "--years",
+        type=int,
+        default=None,
+        help="Bootstrap CVEs published in the last N years (overrides --days)",
+    )
+    cve_db_parser.add_argument(
+        "--full",
+        action="store_true",
+        help="Build full local NVD mirror (~350k CVEs; first-time setup)",
     )
     subparsers.add_parser(
         "cve-stats",
@@ -880,6 +891,10 @@ def main() -> int:
         cmd = [sys.executable, str(BITPROBE_PATH), "update-cve-db"]
         if getattr(args, "days", None) is not None:
             cmd.extend(["--days", str(args.days)])
+        if getattr(args, "years", None) is not None:
+            cmd.extend(["--years", str(args.years)])
+        if getattr(args, "full", False):
+            cmd.append("--full")
         return subprocess.run(cmd, cwd=str(BITPROBE_PATH.parent)).returncode
     if args.command == "cve-stats":
         cmd = [sys.executable, str(BITPROBE_PATH), "cve-stats"]

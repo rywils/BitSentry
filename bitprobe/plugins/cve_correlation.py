@@ -10,12 +10,17 @@ Correlates detected technologies with CVEs using:
 from plugins.base_plugin import BasePlugin, Finding
 from typing import Dict, List
 
-from scanner.cve_db import load_cve_db
+from scanner.cve_db import load_cve_db, sqlite_cve_db_available
 from scanner.fingerprints import fingerprint_technologies
 from scanner.cve_matcher import (
     match_technology_to_cve,
     calculate_severity,
 )
+
+try:
+    from scanner.cve_db_manager import query_cves
+except ImportError:
+    query_cves = None  # type: ignore
 
 
 class CVECorrelationPlugin(BasePlugin):
@@ -179,6 +184,46 @@ class CVECorrelationPlugin(BasePlugin):
             ),
         }
 
+    def _append_cve_finding(
+        self,
+        findings: List[Finding],
+        url: str,
+        tech_name: str,
+        tech_version: str | None,
+        cve_id: str,
+        severity: str,
+        cvss: float | None,
+        match: Dict,
+        description: str,
+        references: List | None = None,
+    ) -> None:
+        guidance = self._generate_contextual_guidance(tech_name, cve_id)
+        refs = references or []
+        findings.append(
+            Finding(
+                plugin_name=self.get_name(),
+                severity=severity,
+                title=f"CVE-{cve_id}: {tech_name} vulnerability",
+                description=description or "No description available.",
+                url=url,
+                evidence={
+                    "technology": tech_name,
+                    "detected_version": tech_version,
+                    "cve_id": cve_id,
+                    "cvss_score": cvss,
+                    "affected_versions": match.get("affected_versions", ""),
+                    "references": refs[:3],
+                },
+                remediation=(
+                    f"Upgrade {tech_name} to a patched version. "
+                    "See CVE details for specific fixed versions."
+                ),
+                attack_scenario=guidance["attack"],
+                defense_strategy=guidance["defense"],
+                mitigation_plan=guidance["mitigation"],
+            )
+        )
+
     def scan(self, url_info: Dict, request_handler) -> List[Finding]:
         findings: List[Finding] = []
 
@@ -194,85 +239,104 @@ class CVECorrelationPlugin(BasePlugin):
         if not tech:
             return findings
 
-        try:
-            db = load_cve_db()
-        except Exception:
-            return findings
-
-        entries = db.get("entries", [])
-        if not entries:
-            return findings
-
-        # Sort entries by CVSS score (highest first) to prioritize critical CVEs
-        entries = sorted(
-            entries,
-            key=lambda e: e.get("cvss") or 0,
-            reverse=True
-        )
-
-        # Get all detected technologies
         detected_techs = self._extract_all_technologies(tech)
-        
-        # Track unique CVEs to avoid duplicates
         found_cves = set()
-        cves_per_tech = {}  # Limit CVEs per technology
-        MAX_CVES_PER_TECH = 10  # Cap at 10 CVEs per technology
+        cves_per_tech: Dict[str, int] = {}
+        MAX_CVES_PER_TECH = 10
+
+        use_sqlite = sqlite_cve_db_available() and query_cves is not None
+        entries = []
+        if not use_sqlite:
+            try:
+                db = load_cve_db()
+            except Exception:
+                return findings
+            entries = db.get("entries", [])
+            if not entries:
+                return findings
+            entries = sorted(
+                entries,
+                key=lambda e: e.get("cvss") or 0,
+                reverse=True,
+            )
 
         for tech_entry in detected_techs:
             tech_name = tech_entry["name"]
             tech_version = tech_entry.get("version")
-            
-            # Track CVEs per technology
+
             if tech_name not in cves_per_tech:
                 cves_per_tech[tech_name] = 0
-            
+
+            if use_sqlite:
+                try:
+                    matched = query_cves(tech_name, version=tech_version)
+                except Exception:
+                    continue
+                matched = sorted(
+                    matched,
+                    key=lambda e: e.get("cvss_score") or 0,
+                    reverse=True,
+                )
+                for cve_row in matched:
+                    cve_id = cve_row.get("cve_id", "UNKNOWN")
+                    cache_key = f"{tech_name}:{cve_id}"
+                    if cache_key in found_cves:
+                        continue
+                    if cves_per_tech[tech_name] >= MAX_CVES_PER_TECH:
+                        break
+                    found_cves.add(cache_key)
+                    cves_per_tech[tech_name] += 1
+                    cvss = cve_row.get("cvss_score")
+                    severity = calculate_severity(cvss, cve_id)
+                    match = {
+                        "matched_product": tech_name,
+                        "detected_version": tech_version,
+                        "affected_versions": "see NVD advisory",
+                    }
+                    self._append_cve_finding(
+                        findings,
+                        url,
+                        tech_name,
+                        tech_version,
+                        cve_id,
+                        severity,
+                        cvss,
+                        match,
+                        cve_row.get("description", ""),
+                        cve_row.get("references"),
+                    )
+                continue
+
             for cve_entry in entries:
                 cve_id = cve_entry.get("cve_id", "UNKNOWN")
-                
-                # Skip if we've already found this CVE for this technology
+
                 cache_key = f"{tech_name}:{cve_id}"
                 if cache_key in found_cves:
                     continue
-                
-                # Skip if we've hit the limit for this technology
+
                 if cves_per_tech[tech_name] >= MAX_CVES_PER_TECH:
                     break
-                
-                # Try to match
+
                 match = match_technology_to_cve(tech_name, tech_version, cve_entry)
                 if not match:
                     continue
-                
+
                 found_cves.add(cache_key)
                 cves_per_tech[tech_name] += 1
-                
-                # Get severity
+
                 cvss = cve_entry.get("cvss")
                 severity = calculate_severity(cvss, cve_id)
-                
-                # Get contextual guidance
-                guidance = self._generate_contextual_guidance(tech_name, cve_id)
-                
-                finding = Finding(
-                    plugin_name=self.get_name(),
-                    severity=severity,
-                    title=f"CVE-{cve_id}: {tech_name} vulnerability",
-                    description=cve_entry.get("summary", "No description available."),
-                    url=url,
-                    evidence={
-                        "technology": tech_name,
-                        "detected_version": tech_version,
-                        "cve_id": cve_id,
-                        "cvss_score": cvss,
-                        "affected_versions": match["affected_versions"],
-                        "references": cve_entry.get("references", [])[:3],  # Top 3 refs
-                    },
-                    remediation=f"Upgrade {tech_name} to a patched version. See CVE details for specific fixed versions.",
-                    attack_scenario=guidance["attack"],
-                    defense_strategy=guidance["defense"],
-                    mitigation_plan=guidance["mitigation"],
+                self._append_cve_finding(
+                    findings,
+                    url,
+                    tech_name,
+                    tech_version,
+                    cve_id,
+                    severity,
+                    cvss,
+                    match,
+                    cve_entry.get("summary", ""),
+                    cve_entry.get("references"),
                 )
-                
-                findings.append(finding)
 
         return findings
