@@ -62,3 +62,4 @@ Thumbs.db
 notes/
 private/
 bitprobe/.git/
+bitprobe/data/cve_db.sqlite
