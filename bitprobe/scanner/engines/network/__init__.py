@@ -1,8 +1,7 @@
 """
 High-performance network scanner.
 
-Tries to use Go native scanner if available and compiled.
-Falls back to pure-Python async implementation.
+Tries to use Rust native scanner first, then Go, then pure-Python.
 
 Usage:
     from scanner.engines.network import scan_target, quick_scan
@@ -21,42 +20,114 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional
 
-# Path to Go scanner
+RUST_BINARY = (
+    Path(__file__).resolve().parents[3]  # bitprobe/
+    / "engines" / "rust" / "bitprobe_engine"
+    / "target" / "release" / "bitprobe-engine"
+)
 GO_SOURCE = Path(__file__).parent / "scanner.go"
-BINARY_NAME = "network_scanner"
+GO_BINARY = GO_SOURCE.parent / "network_scanner"
 
 
-def _get_binary_path() -> Optional[Path]:
-    """Get path to compiled binary if it exists."""
-    binary_dir = GO_SOURCE.parent
-    binary_path = binary_dir / BINARY_NAME
-    
-    if binary_path.exists():
-        return binary_path
-    
-    # Try to compile if Go is available
-    if shutil.which("go"):
-        try:
-            _compile_scanner(binary_path)
-            return binary_path
-        except Exception:
-            pass
-    
+def _get_rust_binary() -> Optional[Path]:
+    """Get path to compiled Rust binary if it exists."""
+    if RUST_BINARY.exists():
+        return RUST_BINARY
     return None
 
 
-def _compile_scanner(output_path: Path) -> None:
-    """Compile the Go scanner binary."""
-    cmd = ["go", "build", "-o", str(output_path), str(GO_SOURCE)]
-    result = subprocess.run(cmd, capture_output=True, text=True, cwd=GO_SOURCE.parent)
-    
+def _get_go_binary() -> Optional[Path]:
+    """Get path to compiled Go binary if it exists or can be built."""
+    if GO_BINARY.exists():
+        return GO_BINARY
+    if shutil.which("go"):
+        try:
+            cmd = ["go", "build", "-o", str(GO_BINARY), str(GO_SOURCE)]
+            result = subprocess.run(cmd, capture_output=True, text=True, cwd=GO_SOURCE.parent)
+            if result.returncode == 0:
+                return GO_BINARY
+        except Exception:
+            pass
+    return None
+
+
+def _get_binary_path() -> Optional[Path]:
+    """Get path to best available scanner binary."""
+    return _get_rust_binary() or _get_go_binary()
+
+
+def scan_target_rust(
+    target: str,
+    ports: str = "top100",
+    timeout_ms: int = 2000,
+    concurrency: int = 0,
+    grab_banners: bool = False,
+) -> Dict:
+    """Scan using Rust binary."""
+    binary = RUST_BINARY
+    if concurrency == 0:
+        concurrency = 512
+
+    cmd = [
+        str(binary), "scan",
+        "--input", target,
+        "--ports", ports,
+        "--timeout-ms", str(timeout_ms),
+        "--concurrency", str(concurrency),
+        "--json",
+    ]
+
+    if grab_banners:
+        cmd.append("--banners")
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+
     if result.returncode != 0:
-        raise RuntimeError(f"Failed to compile Go scanner: {result.stderr}")
+        return {
+            "error": result.stderr,
+            "target": target,
+            "results": [],
+        }
 
+    try:
+        raw = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return {
+            "error": f"failed to parse Rust engine output: {result.stdout[:500]}",
+            "target": target,
+            "results": [],
+        }
 
-def _use_go_scanner() -> bool:
-    """Check if Go scanner is available."""
-    return _get_binary_path() is not None
+    # Convert Rust findings schema → Python expected format
+    results = []
+    for f in raw.get("findings", []):
+        asset = f.get("asset", {})
+        port = asset.get("port")
+        if port is None:
+            continue
+        banner = ""
+        details = f.get("details", {})
+        if details:
+            banner = details.get("banner", "")
+        results.append({
+            "port": port,
+            "protocol": asset.get("protocol", "tcp"),
+            "state": "open",
+            "service": asset.get("service", ""),
+            "banner": banner,
+            "response_time_ms": 0,
+        })
+
+    return {
+        "target": raw.get("target", {}).get("input", target),
+        "scan_type": "connect",
+        "start_time": raw.get("timestamp", ""),
+        "duration_ms": raw.get("duration_ms", 0),
+        "total_ports_scanned": 0,
+        "open_count": len(results),
+        "results": results,
+        "_engine": "rust",
+    }
 
 
 def scan_target_go(
@@ -68,8 +139,10 @@ def scan_target_go(
     grab_banners: bool = False,
 ) -> Dict:
     """Scan using Go binary."""
-    binary = _get_binary_path()
-    
+    binary = _get_go_binary()
+    if not binary:
+        return {"error": "Go binary not available", "target": target, "results": []}
+
     cmd = [
         str(binary),
         "-target", target,
@@ -78,22 +151,22 @@ def scan_target_go(
         "-timeout", str(timeout_ms),
         "-json",
     ]
-    
+
     if concurrency > 0:
         cmd.extend(["-concurrency", str(concurrency)])
-    
+
     if grab_banners:
         cmd.append("-banners")
-    
+
     result = subprocess.run(cmd, capture_output=True, text=True)
-    
+
     if result.returncode != 0:
         return {
             "error": result.stderr,
             "target": target,
             "results": [],
         }
-    
+
     return json.loads(result.stdout)
 
 
@@ -120,24 +193,20 @@ def scan_target(
     """
     Scan target using best available scanner.
     
-    Args:
-        target: Hostname or IP to scan
-        ports: "top100", "top1000", or list of ports
-        scan_type: "connect", "syn", or "udp"
-        timeout_ms: Connection timeout
-        concurrency: Workers (0 = auto)
-        grab_banners: Grab service banners
-    
-    Returns:
-        Dict with scan results
+    Priority: Rust → Go → Python-native.
     """
-    # Use Go scanner if available
-    if _use_go_scanner():
+    rust_bin = _get_rust_binary()
+    if rust_bin:
+        return scan_target_rust(
+            target, ports, timeout_ms, concurrency, grab_banners
+        )
+
+    go_bin = _get_go_binary()
+    if go_bin:
         return scan_target_go(
             target, ports, scan_type, timeout_ms, concurrency, grab_banners
         )
-    
-    # Fall back to native Python scanner
+
     return scan_target_native(
         target, ports, timeout_ms, concurrency or 100, grab_banners
     )
@@ -163,7 +232,8 @@ class NetworkScanner:
         self.timeout_ms = timeout_ms
         self.concurrency = concurrency
         self.grab_banners = grab_banners
-        self._using_go = _use_go_scanner()
+        self._using_rust = _get_rust_binary() is not None
+        self._using_go = not self._using_rust and _get_go_binary() is not None
     
     def scan(self, target: str) -> List[Dict]:
         """Scan a single target."""
@@ -178,7 +248,6 @@ class NetworkScanner:
         if "error" in result:
             raise RuntimeError(result["error"])
         
-        # Return list of open port dicts
         return [
             {
                 "port": r["port"],
@@ -205,7 +274,11 @@ class NetworkScanner:
     @property
     def engine(self) -> str:
         """Return which engine is being used."""
-        return "go" if self._using_go else "python-native"
+        if self._using_rust:
+            return "rust"
+        if self._using_go:
+            return "go"
+        return "python-native"
 
 
 __all__ = [

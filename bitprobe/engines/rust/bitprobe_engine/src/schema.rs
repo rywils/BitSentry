@@ -50,15 +50,21 @@ pub struct Finding {
 }
 
 impl Finding {
-    pub fn open_port(id: String, asset: Asset) -> Self {
+    pub fn open_port(id: String, asset: Asset, banner: Option<String>) -> Self {
+        let mut details = json!({});
+        let mut evidence = vec!["tcp connect succeeded".to_string()];
+        if let Some(b) = banner {
+            details = json!({"banner": b});
+            evidence.push(format!("banner: {}", b));
+        }
         Self {
             id,
             finding_type: "open_port".to_string(),
             severity: "info".to_string(),
             confidence: 0.99,
             asset,
-            details: json!({}),
-            evidence: vec!["tcp connect succeeded".to_string()],
+            details,
+            evidence,
             references: vec![],
         }
     }
@@ -73,4 +79,30 @@ pub struct Asset {
     pub protocol: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub service: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CveSyncResult {
+    pub total_fetched: u64,
+    pub total_inserted: u64,
+    pub duration_ms: u64,
+    pub db_path: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CveLookupResult {
+    pub query: String,
+    pub version_filter: Option<String>,
+    pub total: usize,
+    pub results: Vec<CveEntry>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CveEntry {
+    pub cve_id: String,
+    pub description: String,
+    pub severity: Option<String>,
+    pub cvss_score: Option<f64>,
+    pub published_date: Option<String>,
+    pub references: Vec<String>,
 }
