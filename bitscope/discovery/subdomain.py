@@ -141,7 +141,7 @@ class SubdomainDiscovery:
         candidates = [f"{sub}.{domain}" for sub in common]
         with ThreadPoolExecutor(max_workers=DNS_BRUTEFORCE_WORKERS) as pool:
             resolvable = pool.map(self._is_resolvable, candidates)
-        found = [c for c, ok in zip(candidates, resolvable) if ok]
+        found = [c for c, ok in zip(candidates, resolvable, strict=True) if ok]
 
         return sorted(found)
     
