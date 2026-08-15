@@ -1,0 +1,53 @@
+{
+  "id": "bitsentry",
+  "slug": "bitsentry",
+  "brand": {
+    "name": "BitSentry",
+    "tagline": "AI-powered security orchestration",
+    "primary": "oklch(0.55 0.2 25)",
+    "secondary": "oklch(0.75 0.1 160)",
+    "accent": "oklch(0.65 0.15 80)",
+    "headingFont": "\"Inter\", sans-serif",
+    "bodyFont": "\"Source Sans 3\", \"Helvetica Neue\", Arial, sans-serif",
+    "logoUrl": null
+  },
+  "enabledTypes": [],
+  "providerPriority": {
+    "image": [],
+    "video": [],
+    "animation": []
+  },
+  "stylePresets": [],
+  "features": {
+    "publicGallery": false,
+    "sharing": false,
+    "providerTesting": false,
+    "knowledgeBase": false
+  },
+  "usageLimits": {
+    "total": 1000
+  },
+  "rateLimits": {
+    "requestsPerMinute": 60,
+    "requestsPerHour": 1000,
+    "requestsPerDay": 10000
+  },
+  "defaultModel": "claude-sonnet-5",
+  "productType": "chatbot",
+  "productSettings": {
+    "welcomeMessage": "I'm BitAI. Ask me to scan a target, fetch CVE context, verify a vulnerability, rule out false positives, or generate a report.",
+    "placeholder": "What would you like BitAI to investigate?",
+    "maxHistory": 10,
+    "systemPrompt": "You are BitAI, the security orchestration agent for BitSentry."
+  },
+  "defaultAgent": "bitai",
+  "agents": [
+    {
+      "id": "bitai",
+      "name": "BitAI",
+      "instructions": "You are BitAI, the security orchestration agent for BitSentry.",
+      "tools": [],
+      "model": "claude-sonnet-5"
+    }
+  ]
+}

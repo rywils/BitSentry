@@ -11,41 +11,33 @@ Endpoints:
     GET  /api/bitai/cve
     POST /api/bitai/verify
     POST /api/bitai/report
-    POST /api/bitai/chat  -> attempts to call Proteus runAgent
+    POST /api/bitai/chat  -> forwards to a skevor product's /api/chat route
+
+skevor (~/github/skevor) resolves the tenant itself via getTenant() reading
+skevor.config.json server-side, so this client sends only {input,
+conversationId} and doesn't need to load or forward tenant config.
+
+Note: skevor has no equivalent yet to the old toolEndpoints mapping that let
+the agent invoke scan_target/fetch_cve/verify_vulnerability/
+rule_out_false_positive/generate_report -- that needs a real skevor connector
+(src/core/connectors/) in the skevor repo. This wires the chat proxy only.
 """
 from __future__ import annotations
 
-import json
 import os
-from pathlib import Path
 
 import requests
 from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-CONFIG_PATH = REPO_ROOT / "proteus.config.json"
-PROTEUS_RUN_URL = os.environ.get("PROTEUS_RUN_URL", "http://localhost:3000/api/agent/run")
+SKEVOR_CHAT_URL = os.environ.get("SKEVOR_CHAT_URL", "http://localhost:3000/api/chat")
 
 
 def _json_body() -> dict:
     """Parse the request JSON body, treating any non-dict payload as empty."""
     body = request.get_json(silent=True)
     return body if isinstance(body, dict) else {}
-
-
-def _load_tenant() -> dict:
-    with CONFIG_PATH.open("r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def _agent_config(tenant: dict) -> dict:
-    default = tenant.get("defaultAgent")
-    for agent in tenant.get("agents", []):
-        if agent.get("id") == default:
-            return agent
-    return tenant.get("agents", [{}])[0]
 
 
 @app.route("/api/bitai/scan", methods=["POST"])
@@ -109,37 +101,25 @@ def chat():
     prompt = data.get("prompt", "")
     if not prompt:
         return jsonify({"error": "Missing 'prompt' in request body."}), 400
+    conversation_id = data.get("conversationId")
+
+    # skevor's create-skevor-app web-chat template's POST /api/chat contract:
+    # request {input, conversationId?} -> response {result, conversationId}.
+    chat_request: dict = {"input": prompt}
+    if conversation_id:
+        chat_request["conversationId"] = conversation_id
 
     try:
-        tenant = _load_tenant()
-    except (OSError, json.JSONDecodeError) as exc:
-        return jsonify({"error": f"Could not load {CONFIG_PATH.name}: {exc}"}), 500
-
-    agent_config = _agent_config(tenant)
-
-    # Proteus runAgent input shape (see stock-ai/src/app/api/agent/run/route.ts)
-    run_input = {
-        "tenant": tenant,
-        "agentConfig": agent_config,
-        "input": prompt,
-    }
-
-    try:
-        response = requests.post(
-            PROTEUS_RUN_URL,
-            json={"prompt": prompt},
-            headers={"X-Tenant-Id": tenant.get("id", "")},
-            timeout=10,
-        )
+        response = requests.post(SKEVOR_CHAT_URL, json=chat_request, timeout=10)
         response.raise_for_status()
         return jsonify(response.json())
     except Exception as exc:  # noqa: BLE001
         return (
             jsonify(
                 {
-                    "error": "Proteus runAgent endpoint not reachable; returning intended input shape.",
+                    "error": "skevor chat endpoint not reachable; returning intended input shape.",
                     "details": str(exc),
-                    "proteus_run_input": run_input,
+                    "skevor_chat_request": chat_request,
                 }
             ),
             503,
@@ -150,6 +130,11 @@ if __name__ == "__main__":
     # debug=True enables the Werkzeug interactive debugger, which allows
     # arbitrary code execution from anyone who can trigger an unhandled
     # exception and reach it over the network. Opt in explicitly for local
-    # dev only; never default it on for a process bound to 0.0.0.0.
-    debug = os.environ.get("FLASK_DEBUG", "").strip().lower() in {"1", "true", "yes"}
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5000")), debug=debug)
+    # dev only, and never allow it while bound to every interface -- use
+    # FLASK_HOST=127.0.0.1 for a debug session.
+    host = os.environ.get("FLASK_HOST", "0.0.0.0")
+    debug_requested = os.environ.get("FLASK_DEBUG", "").strip().lower() in {"1", "true", "yes"}
+    debug = debug_requested and host not in {"0.0.0.0", "::"}
+    if debug_requested and not debug:
+        print(f"[!] FLASK_DEBUG requested but host is {host!r}; refusing to enable the debugger on a non-loopback bind.")
+    app.run(host=host, port=int(os.environ.get("PORT", "5000")), debug=debug)

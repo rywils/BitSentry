@@ -26,7 +26,7 @@ Network scanning has a fallback chain in `bitprobe/scanner/engines/network/__ini
 
 `bitreport` aggregates findings across `bitscope`/`bitprobe`/`bitai` into a unified suite report (`writers/pdf_writer.py`, `json_writer.py`) and has its own Vite/TS dashboard for viewing them.
 
-`proteus.config.json` configures a separate hosted chatbot product ("BitAI") with a `webhook` tool mapping to `scan_target`/`fetch_cve`/`verify_vulnerability`/`rule_out_false_positive`/`generate_report`. This is a different integration surface than the CLI — how it maps to the CLI entrypoints isn't confirmed.
+`skevor.config.json` configures a separate hosted chatbot product ("BitAI"), built on [skevor](https://github.com/rywils/skevor), a multi-tenant AI SaaS framework — a different integration surface than the CLI. `bitai/api/app.py` is a Flask stub whose `/api/bitai/chat` route proxies to a skevor product's `/api/chat`; skevor has no equivalent yet to the old tool-endpoint mapping that would let the agent actually invoke `scan_target`/`fetch_cve`/`verify_vulnerability`/`rule_out_false_positive`/`generate_report` — that needs a real skevor connector, not yet built.
 
 ## Data
 
