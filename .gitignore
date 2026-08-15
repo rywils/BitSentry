@@ -63,3 +63,6 @@ notes/
 private/
 bitprobe/.git/
 bitprobe/data/cve_db.sqlite
+
+# Spartan AI config (contains API keys)
+.spartan/ai.env
