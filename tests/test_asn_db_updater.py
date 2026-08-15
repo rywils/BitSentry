@@ -4,6 +4,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 _BITPROBE = Path(__file__).resolve().parents[1] / "bitprobe"
 if str(_BITPROBE) not in sys.path:
     sys.path.insert(0, str(_BITPROBE))
@@ -113,7 +115,7 @@ def test_identities_match_falls_back_to_last_modified_without_etag() -> None:
     ) is True
 
 
-def test_update_asn_db_does_not_persist_identity_when_write_fails(tmp_path, monkeypatch) -> None:
+def test_update_asn_db_does_not_persist_identity_on_download_failure(tmp_path, monkeypatch) -> None:
     # A failure partway through the download loop must not leave state
     # believing an already-downloaded registry is "unchanged" next run --
     # the DB file was never written, so that would silently strand stale
@@ -139,6 +141,40 @@ def test_update_asn_db_does_not_persist_identity_when_write_fails(tmp_path, monk
     assert not Path(m.ASN_DB_PATH).exists()
     lm, etag = m._stored_source_identity("ripencc")
     assert lm is None and etag is None, "identity must not be persisted before a successful write"
+
+
+def test_update_asn_db_does_not_persist_identity_when_file_write_fails(tmp_path, monkeypatch) -> None:
+    # Every registry downloads successfully this time -- only the final
+    # write to ASN_DB_PATH fails. Same requirement: no identity persisted,
+    # since the data that identity would vouch for was never written.
+    monkeypatch.setattr(st, "STATE_DIR", tmp_path / ".bitsentry")
+    monkeypatch.setattr(st, "STATE_PATH", tmp_path / ".bitsentry" / "state.json")
+
+    # A directory in place of the DB file path makes the write raise
+    # IsADirectoryError -- a real write failure, no need to monkeypatch
+    # open() directly.
+    bad_path = tmp_path / "asn_db.json"
+    bad_path.mkdir()
+    monkeypatch.setattr(m, "ASN_DB_PATH", str(bad_path))
+
+    fixtures = {name: _fake_delegated_text(name, i, "XX") for i, name in enumerate(m.ASN_SOURCES)}
+
+    def _fake_get(url: str, timeout: int = 120):
+        for registry, text in fixtures.items():
+            if registry in url:
+                resp = _FakeResponse(text)
+                resp.headers["ETag"] = f'"{registry}-etag"'
+                return resp
+        raise AssertionError(f"unexpected URL: {url}")
+
+    monkeypatch.setattr(m.requests, "get", _fake_get)
+
+    with pytest.raises(IsADirectoryError):
+        m.update_asn_db(verbose=False, force=True)
+
+    for registry in m.ASN_SOURCES:
+        lm, etag = m._stored_source_identity(registry)
+        assert lm is None and etag is None, f"{registry} identity must not persist when the write failed"
 
 
 def test_update_asn_db_skips_download_when_all_sources_unchanged(tmp_path, monkeypatch) -> None:
