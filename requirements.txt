@@ -4,6 +4,9 @@
 # HTTP requests
 requests>=2.28.0
 
+# BitAI API route stubs (bitai/api/app.py)
+flask>=2.3.0
+
 # HTML parsing
 beautifulsoup4>=4.11.0
 

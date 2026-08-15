@@ -29,6 +29,12 @@ CONFIG_PATH = REPO_ROOT / "proteus.config.json"
 PROTEUS_RUN_URL = os.environ.get("PROTEUS_RUN_URL", "http://localhost:3000/api/agent/run")
 
 
+def _json_body() -> dict:
+    """Parse the request JSON body, treating any non-dict payload as empty."""
+    body = request.get_json(silent=True)
+    return body if isinstance(body, dict) else {}
+
+
 def _load_tenant() -> dict:
     with CONFIG_PATH.open("r", encoding="utf-8") as f:
         return json.load(f)
@@ -44,7 +50,7 @@ def _agent_config(tenant: dict) -> dict:
 
 @app.route("/api/bitai/scan", methods=["POST"])
 def scan_target():
-    body = request.get_json(silent=True) or {}
+    body = _json_body()
     return jsonify(
         {
             "tool": "scan_target",
@@ -71,7 +77,7 @@ def fetch_cve():
 
 @app.route("/api/bitai/verify", methods=["POST"])
 def verify_vulnerability():
-    body = request.get_json(silent=True) or {}
+    body = _json_body()
     tool_name = body.get("name", "verify_vulnerability")
     return jsonify(
         {
@@ -86,7 +92,7 @@ def verify_vulnerability():
 
 @app.route("/api/bitai/report", methods=["POST"])
 def generate_report():
-    body = request.get_json(silent=True) or {}
+    body = _json_body()
     return jsonify(
         {
             "tool": "generate_report",
@@ -99,12 +105,16 @@ def generate_report():
 
 @app.route("/api/bitai/chat", methods=["POST"])
 def chat():
-    data = request.get_json(silent=True) or {}
+    data = _json_body()
     prompt = data.get("prompt", "")
     if not prompt:
         return jsonify({"error": "Missing 'prompt' in request body."}), 400
 
-    tenant = _load_tenant()
+    try:
+        tenant = _load_tenant()
+    except (OSError, json.JSONDecodeError) as exc:
+        return jsonify({"error": f"Could not load {CONFIG_PATH.name}: {exc}"}), 500
+
     agent_config = _agent_config(tenant)
 
     # Proteus runAgent input shape (see stock-ai/src/app/api/agent/run/route.ts)
@@ -118,7 +128,7 @@ def chat():
         response = requests.post(
             PROTEUS_RUN_URL,
             json={"prompt": prompt},
-            headers={"X-Tenant-Id": tenant["id"]},
+            headers={"X-Tenant-Id": tenant.get("id", "")},
             timeout=10,
         )
         response.raise_for_status()
@@ -137,4 +147,9 @@ def chat():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5000")), debug=True)
+    # debug=True enables the Werkzeug interactive debugger, which allows
+    # arbitrary code execution from anyone who can trigger an unhandled
+    # exception and reach it over the network. Opt in explicitly for local
+    # dev only; never default it on for a process bound to 0.0.0.0.
+    debug = os.environ.get("FLASK_DEBUG", "").strip().lower() in {"1", "true", "yes"}
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5000")), debug=debug)
