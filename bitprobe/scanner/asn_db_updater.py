@@ -16,8 +16,17 @@ from scanner.update_state import (
 # Warn / refresh after this many days without a successful sync.
 ASN_DB_STALE_DAYS = 7
 
-# Public source (RIPE delegated stats; safe + standard)
-ASN_SOURCE_URL = "https://ftp.ripe.net/pub/stats/ripencc/delegated-ripencc-latest"
+# All five Regional Internet Registries' delegated stats files. RIPE NCC
+# alone only covers Europe/Middle East/Central Asia; ARIN and AFRINIC only
+# publish the "-extended" variant, but its extra 8th field (opaque id) is
+# harmless since the parser below only reads the first 7 pipe fields.
+ASN_SOURCES: dict[str, str] = {
+    "ripencc": "https://ftp.ripe.net/pub/stats/ripencc/delegated-ripencc-latest",
+    "arin": "https://ftp.arin.net/pub/stats/arin/delegated-arin-extended-latest",
+    "apnic": "https://ftp.apnic.net/apnic/stats/apnic/delegated-apnic-latest",
+    "lacnic": "https://ftp.lacnic.net/pub/stats/lacnic/delegated-lacnic-latest",
+    "afrinic": "https://ftp.afrinic.net/pub/stats/afrinic/delegated-afrinic-extended-latest",
+}
 
 _STATE_LM = "source_last_modified"
 _STATE_ETAG = "source_etag"
@@ -79,11 +88,11 @@ def describe_asn_db_local_status() -> str:
     return f"ok (last sync {age} days ago, within {ASN_DB_STALE_DAYS} day window)"
 
 
-def _head_source_identity() -> tuple[str | None, str | None]:
-    """Return (Last-Modified, ETag) from the ASN source, if present."""
+def _head_source_identity(url: str) -> tuple[str | None, str | None]:
+    """Return (Last-Modified, ETag) from an ASN source URL, if present."""
     try:
         h = requests.head(
-            ASN_SOURCE_URL,
+            url,
             timeout=30,
             allow_redirects=True,
             headers={"Accept": "*/*"},
@@ -97,9 +106,9 @@ def _head_source_identity() -> tuple[str | None, str | None]:
         return None, None
 
 
-def _stored_source_identity() -> tuple[str | None, str | None]:
-    lm = get_section_value("asn", _STATE_LM)
-    etag = get_section_value("asn", _STATE_ETAG)
+def _stored_source_identity(registry: str) -> tuple[str | None, str | None]:
+    lm = get_section_value("asn", f"{registry}_{_STATE_LM}")
+    etag = get_section_value("asn", f"{registry}_{_STATE_ETAG}")
     if not isinstance(lm, str) or not lm:
         lm = None
     if not isinstance(etag, str) or not etag:
@@ -121,7 +130,7 @@ def _identities_match(
 
 
 def _touch_local_asn_metadata(verbose: bool = False) -> None:
-    """Refresh local metadata when the upstream delegated file is unchanged."""
+    """Refresh local metadata when none of the upstream delegated files changed."""
     if not os.path.isfile(ASN_DB_PATH):
         return
     try:
@@ -133,8 +142,9 @@ def _touch_local_asn_metadata(verbose: bool = False) -> None:
     if not isinstance(meta, dict):
         meta = {}
     meta["last_updated"] = datetime.now(timezone.utc).isoformat()
-    meta["source"] = ASN_SOURCE_URL
-    meta["sync_note"] = "unchanged upstream delegated file; metadata refreshed"
+    meta["sources"] = list(ASN_SOURCES.values())
+    meta.pop("source", None)
+    meta["sync_note"] = "unchanged upstream delegated files; metadata refreshed"
     data["metadata"] = meta
     with open(ASN_DB_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
@@ -162,101 +172,109 @@ def update_asn_db(verbose: bool = False, force: bool = False) -> None:
         os.makedirs(parent, exist_ok=True)
 
     if not force and os.path.isfile(ASN_DB_PATH):
-        new_lm, new_etag = _head_source_identity()
-        old_lm, old_etag = _stored_source_identity()
-        if new_lm or new_etag:
-            if old_lm or old_etag:
-                if _identities_match(old_lm, old_etag, new_lm, new_etag):
-                    if verbose:
-                        _info("RIPE delegated file unchanged on server; skipping download.")
-                    _touch_local_asn_metadata(verbose=verbose)
-                    set_state_timestamp("asn", "last_updated")
-                    _green("Updated DB")
-                    return
-            elif verbose:
-                print(
-                    "[VERBOSE] No stored source Last-Modified/ETag yet; will download once."
-                )
-        elif verbose:
-            print(
-                "[VERBOSE] Source did not return Last-Modified/ETag; downloading full file."
-            )
-
-    if verbose:
-        _info(f"Downloading ASN allocation data from {ASN_SOURCE_URL}")
-
-    try:
-        resp = requests.get(ASN_SOURCE_URL, timeout=120)
-        if resp.status_code != 200:
-            print(f"[!] ASN update failed: HTTP {resp.status_code}")
-            print(f"[!] URL: {ASN_SOURCE_URL}")
-            print(f"[!] Response: {resp.text[:500]}")
-            raise RuntimeError(f"ASN source request failed with HTTP {resp.status_code}")
-        lm = resp.headers.get("Last-Modified")
-        etag = resp.headers.get("ETag") or resp.headers.get("Etag")
-        merge_section(
-            "asn",
-            {
-                _STATE_LM: lm,
-                _STATE_ETAG: etag,
-            },
-        )
-        if verbose:
-            print(f"[VERBOSE] Downloaded {len(resp.text)} bytes")
-    except Exception as e:
-        print(f"[!] Failed to download ASN data: {e}")
-        raise
+        all_unchanged = True
+        for registry, url in ASN_SOURCES.items():
+            new_lm, new_etag = _head_source_identity(url)
+            old_lm, old_etag = _stored_source_identity(registry)
+            if not (new_lm or new_etag):
+                if verbose:
+                    print(f"[VERBOSE] {registry}: no Last-Modified/ETag returned; will re-download.")
+                all_unchanged = False
+                continue
+            if not (old_lm or old_etag):
+                if verbose:
+                    print(f"[VERBOSE] {registry}: no stored identity yet; will download once.")
+                all_unchanged = False
+                continue
+            if not _identities_match(old_lm, old_etag, new_lm, new_etag):
+                all_unchanged = False
+        if all_unchanged:
+            if verbose:
+                _info("All RIR delegated files unchanged on server; skipping download.")
+            _touch_local_asn_metadata(verbose=verbose)
+            set_state_timestamp("asn", "last_updated")
+            _green("Updated DB")
+            return
 
     asn_map: dict[str, dict] = {}
     lines_processed = 0
     lines_skipped = 0
 
-    for line in resp.text.splitlines():
-        if line.startswith("#"):
-            lines_skipped += 1
-            continue
-
-        parts = line.split("|")
-        if len(parts) < 7:
-            lines_skipped += 1
-            continue
-
-        _registry, cc, rtype, start, _value, date, status = parts[:7]
-
-        if rtype != "asn":
-            continue
+    for registry, url in ASN_SOURCES.items():
+        if verbose:
+            _info(f"Downloading ASN allocation data from {registry} ({url})")
 
         try:
-            asn = int(start)
-        except ValueError:
-            continue
+            resp = requests.get(url, timeout=120)
+            if resp.status_code != 200:
+                print(f"[!] ASN update failed for {registry}: HTTP {resp.status_code}")
+                print(f"[!] URL: {url}")
+                print(f"[!] Response: {resp.text[:500]}")
+                raise RuntimeError(
+                    f"ASN source request failed for {registry} with HTTP {resp.status_code}"
+                )
+            lm = resp.headers.get("Last-Modified")
+            etag = resp.headers.get("ETag") or resp.headers.get("Etag")
+            merge_section(
+                "asn",
+                {
+                    f"{registry}_{_STATE_LM}": lm,
+                    f"{registry}_{_STATE_ETAG}": etag,
+                },
+            )
+            if verbose:
+                print(f"[VERBOSE] Downloaded {len(resp.text)} bytes from {registry}")
+        except Exception as e:
+            print(f"[!] Failed to download ASN data from {registry}: {e}")
+            raise
 
-        asn_map[str(asn)] = {
-            "registry": parts[0],
-            "country": cc,
-            "status": status,
-            "allocated": date,
-        }
-        lines_processed += 1
+        for line in resp.text.splitlines():
+            if line.startswith("#"):
+                lines_skipped += 1
+                continue
 
-        if verbose and lines_processed % 10000 == 0:
-            print(f"[VERBOSE] Processed {lines_processed} ASN records...")
+            parts = line.split("|")
+            if len(parts) < 7:
+                lines_skipped += 1
+                continue
+
+            _registry_field, cc, rtype, start, _value, date, status = parts[:7]
+
+            if rtype != "asn":
+                continue
+
+            try:
+                asn = int(start)
+            except ValueError:
+                continue
+
+            # ASN number blocks don't overlap across RIRs under normal
+            # allocation, so this shouldn't collide; if it ever does, the
+            # last-processed registry wins.
+            asn_map[str(asn)] = {
+                "registry": registry,
+                "country": cc,
+                "status": status,
+                "allocated": date,
+            }
+            lines_processed += 1
+
+            if verbose and lines_processed % 10000 == 0:
+                print(f"[VERBOSE] Processed {lines_processed} ASN records so far...")
 
     if verbose:
-        print(f"[VERBOSE] Processed {lines_processed} lines, skipped {lines_skipped} lines")
+        print(f"[VERBOSE] Processed {lines_processed} lines total, skipped {lines_skipped} lines")
         print(f"[VERBOSE] Total ASNs in database: {len(asn_map)}")
         sample_asns = list(asn_map.items())[:5]
         print("[VERBOSE] Sample ASN entries:")
-        for asn, data in sample_asns:
-            print(f"[VERBOSE]   ASN {asn}: {data}")
+        for asn, entry in sample_asns:
+            print(f"[VERBOSE]   ASN {asn}: {entry}")
 
     data = {
         "metadata": {
-            "source": ASN_SOURCE_URL,
+            "sources": list(ASN_SOURCES.values()),
             "last_updated": datetime.now(timezone.utc).isoformat(),
             "total_asns": len(asn_map),
-            "source_last_modified": lm,
-            "source_etag": etag,
         },
         "asns": asn_map,
     }
