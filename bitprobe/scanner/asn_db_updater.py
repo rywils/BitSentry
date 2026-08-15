@@ -122,10 +122,17 @@ def _identities_match(
     new_lm: str | None,
     new_etag: str | None,
 ) -> bool:
-    if new_etag and old_etag and new_etag.strip() == old_etag.strip():
-        return True
-    if new_lm and old_lm and new_lm.strip() == old_lm.strip():
-        return True
+    """
+    ETag is a precise content hash; Last-Modified can be coarse (e.g.
+    day-granularity) and can match even when the content changed. When both
+    sides have an ETag, trust it exclusively -- don't let a stale-but-equal
+    Last-Modified override a real ETag mismatch. Only fall back to
+    Last-Modified when an ETag isn't available on both sides.
+    """
+    if old_etag and new_etag:
+        return new_etag.strip() == old_etag.strip()
+    if old_lm and new_lm:
+        return new_lm.strip() == old_lm.strip()
     return False
 
 
@@ -199,6 +206,11 @@ def update_asn_db(verbose: bool = False, force: bool = False) -> None:
     asn_map: dict[str, dict] = {}
     lines_processed = 0
     lines_skipped = 0
+    # Collected but not persisted to state until the write below succeeds --
+    # otherwise a failure partway through this loop could record registries
+    # already processed as "unchanged" next run while the data they'd have
+    # produced was never actually written to ASN_DB_PATH.
+    pending_identities: dict[str, dict] = {}
 
     for registry, url in ASN_SOURCES.items():
         if verbose:
@@ -215,13 +227,10 @@ def update_asn_db(verbose: bool = False, force: bool = False) -> None:
                 )
             lm = resp.headers.get("Last-Modified")
             etag = resp.headers.get("ETag") or resp.headers.get("Etag")
-            merge_section(
-                "asn",
-                {
-                    f"{registry}_{_STATE_LM}": lm,
-                    f"{registry}_{_STATE_ETAG}": etag,
-                },
-            )
+            pending_identities[registry] = {
+                f"{registry}_{_STATE_LM}": lm,
+                f"{registry}_{_STATE_ETAG}": etag,
+            }
             if verbose:
                 print(f"[VERBOSE] Downloaded {len(resp.text)} bytes from {registry}")
         except Exception as e:
@@ -238,25 +247,30 @@ def update_asn_db(verbose: bool = False, force: bool = False) -> None:
                 lines_skipped += 1
                 continue
 
-            _registry_field, cc, rtype, start, _value, date, status = parts[:7]
+            _registry_field, cc, rtype, start, value, date, status = parts[:7]
 
             if rtype != "asn":
                 continue
 
             try:
-                asn = int(start)
+                asn_start = int(start)
+                # 'value' is the count of consecutive ASNs in this
+                # allocation block, not just a single ASN at 'start' --
+                # e.g. start=306 value=66 covers ASNs 306 through 371.
+                asn_count = int(value)
             except ValueError:
                 continue
 
             # ASN number blocks don't overlap across RIRs under normal
             # allocation, so this shouldn't collide; if it ever does, the
             # last-processed registry wins.
-            asn_map[str(asn)] = {
-                "registry": registry,
-                "country": cc,
-                "status": status,
-                "allocated": date,
-            }
+            for asn in range(asn_start, asn_start + max(asn_count, 1)):
+                asn_map[str(asn)] = {
+                    "registry": registry,
+                    "country": cc,
+                    "status": status,
+                    "allocated": date,
+                }
             lines_processed += 1
 
             if verbose and lines_processed % 10000 == 0:
@@ -282,6 +296,8 @@ def update_asn_db(verbose: bool = False, force: bool = False) -> None:
     with open(ASN_DB_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
+    for registry_updates in pending_identities.values():
+        merge_section("asn", registry_updates)
     set_state_timestamp("asn", "last_updated")
     _green("Updated DB")
 

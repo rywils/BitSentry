@@ -19,11 +19,11 @@ class _FakeResponse:
         self.headers: dict[str, str] = {}
 
 
-def _fake_delegated_text(registry: str, asn: int, cc: str) -> str:
+def _fake_delegated_text(registry: str, asn: int, cc: str, value: int = 1) -> str:
     return (
         f"2.3|{registry}|3|20240101|18800|20240101|+0000\n"
         f"{registry}|*|asn|*|1|summary\n"
-        f"{registry}|{cc}|asn|{asn}|1|20200101|allocated\n"
+        f"{registry}|{cc}|asn|{asn}|{value}|20200101|allocated\n"
     )
 
 
@@ -63,6 +63,82 @@ def test_update_asn_db_merges_all_five_registries(tmp_path, monkeypatch) -> None
         "allocated": "20200101",
     }
     assert data["asns"]["500"]["country"] == "ZA"
+
+
+def test_update_asn_db_expands_multi_asn_allocation_blocks(tmp_path, monkeypatch) -> None:
+    # 'value' in the RIR delegated format is a count of consecutive ASNs
+    # starting at 'start', not a single ASN -- e.g. start=306 value=2 covers
+    # ASNs 306 and 307, both of which must be recorded.
+    monkeypatch.setattr(st, "STATE_DIR", tmp_path / ".bitsentry")
+    monkeypatch.setattr(st, "STATE_PATH", tmp_path / ".bitsentry" / "state.json")
+    monkeypatch.setattr(m, "ASN_DB_PATH", str(tmp_path / "asn_db.json"))
+
+    fixtures = {name: _fake_delegated_text(name, 100, "XX") for name in m.ASN_SOURCES}
+    fixtures["arin"] = _fake_delegated_text("arin", 306, "US", value=2)
+
+    def _fake_get(url: str, timeout: int = 120):
+        for registry, text in fixtures.items():
+            if registry in url:
+                return _FakeResponse(text)
+        raise AssertionError(f"unexpected URL: {url}")
+
+    monkeypatch.setattr(m.requests, "get", _fake_get)
+
+    m.update_asn_db(verbose=False, force=True)
+
+    with open(m.ASN_DB_PATH, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    assert data["asns"]["306"]["country"] == "US"
+    assert data["asns"]["307"]["country"] == "US"
+
+
+def test_identities_match_prefers_etag_over_stale_last_modified() -> None:
+    # Matching Last-Modified shouldn't win over a real ETag mismatch --
+    # Last-Modified can be coarse enough to stay equal across a real change.
+    assert m._identities_match(
+        old_lm="Mon, 01 Jan 2024 00:00:00 GMT",
+        old_etag='"abc"',
+        new_lm="Mon, 01 Jan 2024 00:00:00 GMT",
+        new_etag='"xyz"',
+    ) is False
+
+
+def test_identities_match_falls_back_to_last_modified_without_etag() -> None:
+    assert m._identities_match(
+        old_lm="Mon, 01 Jan 2024 00:00:00 GMT",
+        old_etag=None,
+        new_lm="Mon, 01 Jan 2024 00:00:00 GMT",
+        new_etag=None,
+    ) is True
+
+
+def test_update_asn_db_does_not_persist_identity_when_write_fails(tmp_path, monkeypatch) -> None:
+    # A failure partway through the download loop must not leave state
+    # believing an already-downloaded registry is "unchanged" next run --
+    # the DB file was never written, so that would silently strand stale
+    # data as trusted.
+    monkeypatch.setattr(st, "STATE_DIR", tmp_path / ".bitsentry")
+    monkeypatch.setattr(st, "STATE_PATH", tmp_path / ".bitsentry" / "state.json")
+    monkeypatch.setattr(m, "ASN_DB_PATH", str(tmp_path / "asn_db.json"))
+
+    def _fake_get(url: str, timeout: int = 120):
+        if "ripencc" in url:
+            resp = _FakeResponse(_fake_delegated_text("ripencc", 100, "DE"))
+            resp.headers["ETag"] = '"ripencc-etag"'
+            return resp
+        raise RuntimeError("simulated network failure")
+
+    monkeypatch.setattr(m.requests, "get", _fake_get)
+
+    try:
+        m.update_asn_db(verbose=False, force=True)
+    except Exception:
+        pass
+
+    assert not Path(m.ASN_DB_PATH).exists()
+    lm, etag = m._stored_source_identity("ripencc")
+    assert lm is None and etag is None, "identity must not be persisted before a successful write"
 
 
 def test_update_asn_db_skips_download_when_all_sources_unchanged(tmp_path, monkeypatch) -> None:
