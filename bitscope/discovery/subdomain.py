@@ -5,9 +5,12 @@ Subdomain discovery via multiple sources.
 import socket
 import ssl
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, Dict, List, Set
 from urllib.parse import urlsplit
 import requests
+
+DNS_BRUTEFORCE_WORKERS = 20
 
 
 def normalize_target_hostname(raw: str) -> str:
@@ -135,12 +138,11 @@ class SubdomainDiscovery:
             "autodiscover", "autoconfig", "m", "mobile", "amp",
         ]
         
-        found = []
-        for sub in common:
-            subdomain = f"{sub}.{domain}"
-            if self._is_resolvable(subdomain):
-                found.append(subdomain)
-        
+        candidates = [f"{sub}.{domain}" for sub in common]
+        with ThreadPoolExecutor(max_workers=DNS_BRUTEFORCE_WORKERS) as pool:
+            resolvable = pool.map(self._is_resolvable, candidates)
+        found = [c for c, ok in zip(candidates, resolvable, strict=True) if ok]
+
         return sorted(found)
     
     def _from_ssl_cert(self, domain: str) -> List[str]:
