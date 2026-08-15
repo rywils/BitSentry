@@ -24,9 +24,10 @@ NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 DEFAULT_STALE_DAYS = 7
 # Below this count, local DB is treated as a short publication window bootstrap, not full coverage.
 MIN_PRODUCTION_CVE_COUNT = 50_000
-# NVD bulk-download pacing (https://nvd.nist.gov/developers/start-here)
+# NVD rate limits (https://nvd.nist.gov/developers/start-here): 5 req/30s
+# without a key (6.0s spacing), 50 req/30s with one (0.6s spacing, +margin).
 NVD_SLEEP_NO_KEY = 6.0
-NVD_SLEEP_WITH_KEY = 2.0
+NVD_SLEEP_WITH_KEY = 0.65
 NVD_MAX_RETRIES = 6
 NVD_RETRY_HTTP = frozenset({404, 429, 500, 502, 503, 504})
 
@@ -56,11 +57,15 @@ def _normalize_nvd_timestamp(value: str) -> str:
     return value
 
 
-def _nvd_inter_request_sleep(api_key: Optional[str], *, full_sync: bool) -> float:
-    """Seconds to wait between NVD requests (rate-limit safe)."""
-    if full_sync:
-        return NVD_SLEEP_WITH_KEY if api_key else NVD_SLEEP_NO_KEY
-    return 0.65 if not api_key else 0.25
+def _nvd_inter_request_sleep(api_key: Optional[str]) -> float:
+    """
+    Seconds to wait between NVD requests (rate-limit safe).
+
+    Same pacing for full_sync and incremental/windowed: a stale DB catching
+    up incrementally can span just as many pages as a full sync, and NVD's
+    rate limit is a rolling window, not a per-request-type budget.
+    """
+    return NVD_SLEEP_WITH_KEY if api_key else NVD_SLEEP_NO_KEY
 
 
 def _nvd_get(
@@ -430,6 +435,7 @@ def update_cve_database(
     start_index = 0
     batch_num = 0
     batch_cves = []  # Collect CVEs for batch insert
+    store_conn = _connect()  # reused across all batches in this run
     overall_start_time = time.time()
     latest_last_modified: str | None = None
     saw_vulnerabilities = False
@@ -498,7 +504,7 @@ def update_cve_database(
             if len(batch_cves) >= 1000:
                 if verbose:
                     print(f"[VERBOSE] Storing batch of {len(batch_cves)} CVEs...")
-                _store_cves_batch(batch_cves)
+                _store_cves_batch(batch_cves, conn=store_conn)
                 total_updated += len(batch_cves)
                 if verbose:
                     print(f"[VERBOSE] Batch stored. Total updated so far: {total_updated}")
@@ -527,7 +533,7 @@ def update_cve_database(
             if start_index >= total_results:
                 break
 
-            time.sleep(_nvd_inter_request_sleep(api_key, full_sync=full_sync))
+            time.sleep(_nvd_inter_request_sleep(api_key))
 
         except requests.exceptions.Timeout:
             print(f"\n[!] Request timeout after 60s - possible hang detected at batch {batch_num}")
@@ -546,10 +552,12 @@ def update_cve_database(
     if batch_cves:
         if verbose:
             print(f"[VERBOSE] Storing final batch of {len(batch_cves)} CVEs...")
-        _store_cves_batch(batch_cves)
+        _store_cves_batch(batch_cves, conn=store_conn)
         total_updated += len(batch_cves)
         if verbose:
             print(f"[VERBOSE] Final batch stored.")
+
+    store_conn.close()
 
     if api_failed:
         raise RuntimeError("CVE update failed before completion; state not updated.")
@@ -605,6 +613,41 @@ def update_cve_database(
     return total_updated
 
 
+def _extract_cpe_matches_from_node(node: Dict) -> List[Dict]:
+    """
+    Extract product entries from one NVD configuration node, recursing into
+    nested 'children' nodes (used for AND/OR vulnerable-configuration logic,
+    e.g. "product A AND (component B OR component C)"). Without recursion,
+    CVEs whose CPE matches live only under a child node are stored with no
+    product mapping and silently never correlate during a scan.
+    """
+    products = []
+    for match in node.get('cpeMatch', []):
+        if not match.get('vulnerable'):
+            continue
+        criteria = match.get('criteria', '')
+        parts = criteria.split(':')
+        if len(parts) < 5:
+            continue
+        vendor = parts[3] if len(parts) > 3 else ''
+        product = parts[4] if len(parts) > 4 else ''
+        version_str = parts[5] if len(parts) > 5 else '*'
+
+        products.append({
+            'vendor': vendor.lower(),
+            'product': product.lower(),
+            'version_start': match.get('versionStartIncluding', version_str if version_str != '*' else None),
+            'version_end': match.get('versionEndIncluding', version_str if version_str != '*' else None),
+            'version_start_including': 1 if match.get('versionStartIncluding') else 0,
+            'version_end_including': 1 if match.get('versionEndIncluding') else 0,
+        })
+
+    for child in node.get('children', []):
+        products.extend(_extract_cpe_matches_from_node(child))
+
+    return products
+
+
 def _extract_cve_data(cve_data: Dict) -> Optional[Dict]:
     """Extract normalized CVE data from NVD format."""
     cve_id = cve_data.get('id')
@@ -643,23 +686,7 @@ def _extract_cve_data(cve_data: Dict) -> Optional[Dict]:
     products = []
     for config in cve_data.get('configurations', []):
         for node in config.get('nodes', []):
-            for match in node.get('cpeMatch', []):
-                if match.get('vulnerable'):
-                    criteria = match.get('criteria', '')
-                    parts = criteria.split(':')
-                    if len(parts) >= 5:
-                        vendor = parts[3] if len(parts) > 3 else ''
-                        product = parts[4] if len(parts) > 4 else ''
-                        version_str = parts[5] if len(parts) > 5 else '*'
-
-                        products.append({
-                            'vendor': vendor.lower(),
-                            'product': product.lower(),
-                            'version_start': match.get('versionStartIncluding', version_str if version_str != '*' else None),
-                            'version_end': match.get('versionEndIncluding', version_str if version_str != '*' else None),
-                            'version_start_including': 1 if match.get('versionStartIncluding') else 0,
-                            'version_end_including': 1 if match.get('versionEndIncluding') else 0,
-                        })
+            products.extend(_extract_cpe_matches_from_node(node))
 
     return {
         'cve_id': cve_id,
@@ -674,12 +701,18 @@ def _extract_cve_data(cve_data: Dict) -> Optional[Dict]:
     }
 
 
-def _store_cves_batch(cve_data_list: List[Dict]):
-    """Store multiple CVEs in a single batch transaction (much faster)."""
+def _store_cves_batch(cve_data_list: List[Dict], conn: Optional[sqlite3.Connection] = None):
+    """
+    Store multiple CVEs in a single batch transaction (much faster).
+
+    Accepts an existing connection so callers doing many batches in one run
+    (e.g. update_cve_database) don't reopen the SQLite file per batch.
+    """
     if not cve_data_list:
         return
 
-    conn = _connect()
+    owns_conn = conn is None
+    conn = conn or _connect()
     cursor = conn.cursor()
 
     try:
@@ -741,7 +774,8 @@ def _store_cves_batch(cve_data_list: List[Dict]):
 
         conn.commit()
     finally:
-        conn.close()
+        if owns_conn:
+            conn.close()
 
 
 def _store_cve(cve_data: Dict):
