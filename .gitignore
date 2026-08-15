@@ -4,6 +4,7 @@ docusaurus/
 stitch_export
 REPORTS/
 
+
 # Secrets 
 .env
 .env.*
@@ -66,3 +67,7 @@ bitprobe/data/cve_db.sqlite
 
 # Spartan AI config (contains API keys)
 .spartan/ai.env
+
+#Other
+.SKILL.md
+.AGENTS.md
