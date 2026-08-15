@@ -69,5 +69,5 @@ bitprobe/data/cve_db.sqlite
 .spartan/ai.env
 
 #Other
-.SKILL.md
-.AGENTS.md
+SKILL.md
+AGENTS.md
