@@ -75,3 +75,6 @@ AGENTS.md
 # Spartan local planning/memory state -- not for the public repo
 .planning/
 .memory/
+
+# Local OpenCode config
+.opencode/
