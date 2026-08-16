@@ -1,6 +1,6 @@
 # BitSentry
 
-CLI-first security assessment suite. Public build covers external attack-surface discovery (`bitscope`) and web vulnerability scanning (`bitprobe`), orchestrated by `bitsentry.py`. A private edition with a web UI exists but isn't in this repo.
+CLI-first security assessment suite. Covers external attack-surface discovery (`bitscope`) and web vulnerability scanning (`bitprobe`), orchestrated by `bitsentry.py`.
 
 > Only ever scan targets you own or are explicitly authorized to test.
 

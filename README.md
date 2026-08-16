@@ -237,8 +237,6 @@ python -m pytest
 
 Short term: complete and integrate scaffold modules (`bitwatch`, `bitgraph`, `bitintel`, `bitspear`, `bitcannon`).
 
-Private product line: includes Web UI and broader integrations (SSO, workflow hooks, exports, and operational connectors) while keeping capability parity with CLI operations.
-
 Implementation direction: Python remains the orchestration core; performance-sensitive components may continue to move into compiled tooling (Go/Rust/Zig) where appropriate.
 
 ## License
