@@ -256,6 +256,35 @@ else
 fi
 rm -f "${LAUNCHER_TMP}"
 
+# A shell alias named `bitsentry` (e.g. left over from an older version of
+# this installer, or copied in via synced dotfiles from another machine)
+# shadows the real launcher in interactive shells even though this script
+# -- running under bash -- has no visibility into zsh/fish alias tables to
+# detect that itself. Scrub it from the rc file we're about to manage so
+# "install completed" actually means the command works.
+#
+# Only delete a line if it's PROVABLY just a standalone `alias bitsentry=...`
+# declaration -- the whole line, nothing else. A line sharing `; other-cmd`,
+# `&& other-cmd`, a leading conditional, or a trailing `\` continuation gets
+# left alone; deleting the whole line would silently destroy that unrelated
+# content too. Those get reported for manual cleanup instead.
+BITSENTRY_ALIAS_RE='alias[[:space:]]+bitsentry='
+BITSENTRY_ALIAS_STANDALONE_RE='^[[:space:]]*alias[[:space:]]+bitsentry=("[^"]*"|'"'"'[^'"'"']*'"'"'|[^[:space:];&|\\]+)[[:space:]]*$'
+if [[ -n "${RC_FILE}" ]] && [[ -f "${RC_FILE}" ]] && grep -qE "${BITSENTRY_ALIAS_RE}" "${RC_FILE}"; then
+  if grep -qE "${BITSENTRY_ALIAS_STANDALONE_RE}" "${RC_FILE}"; then
+    echo "[!] Found an existing 'bitsentry' alias in ${RC_FILE} that would shadow the installed launcher."
+    if [[ "${OS_NAME}" == "Darwin" ]]; then
+      sed -i '' -E "/${BITSENTRY_ALIAS_STANDALONE_RE}/d" "${RC_FILE}"
+    else
+      sed -i -E "/${BITSENTRY_ALIAS_STANDALONE_RE}/d" "${RC_FILE}"
+    fi
+    echo "[+] Removed stale bitsentry alias from ${RC_FILE}"
+  fi
+  if grep -qE "${BITSENTRY_ALIAS_RE}" "${RC_FILE}"; then
+    echo "[!] ${RC_FILE} still defines a 'bitsentry' alias on a compound, conditional, or continued line -- it may shadow the installed launcher. Please remove it manually."
+  fi
+fi
+
 if [[ "${OS_NAME}" == "Darwin" ]] && [[ "${INSTALL_BIN_PATH}" == *"/sbin/"* ]]; then
   MAC_BIN="/usr/local/bin/bitsentry"
   if [[ ! -f "${MAC_BIN}" ]] || [[ "${INSTALL_BIN_PATH}" -nt "${MAC_BIN}" ]] 2>/dev/null; then
