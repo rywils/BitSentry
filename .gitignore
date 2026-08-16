@@ -78,3 +78,6 @@ AGENTS.md
 
 # Local OpenCode config
 .opencode/
+
+# Personal AI workflow tooling -- not project convention, not for the public repo
+.claude/
