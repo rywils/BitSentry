@@ -256,6 +256,22 @@ else
 fi
 rm -f "${LAUNCHER_TMP}"
 
+# A shell alias named `bitsentry` (e.g. left over from an older version of
+# this installer, or copied in via synced dotfiles from another machine)
+# shadows the real launcher in interactive shells even though this script
+# -- running under bash -- has no visibility into zsh/fish alias tables to
+# detect that itself. Scrub it from the rc file we're about to manage so
+# "install completed" actually means the command works.
+if [[ -n "${RC_FILE}" ]] && [[ -f "${RC_FILE}" ]] && grep -qE '^[[:space:]]*alias[[:space:]]+bitsentry=' "${RC_FILE}"; then
+  echo "[!] Found an existing 'bitsentry' alias in ${RC_FILE} that would shadow the installed launcher."
+  if [[ "${OS_NAME}" == "Darwin" ]]; then
+    sed -i '' '/^[[:space:]]*alias[[:space:]]\+bitsentry=/d' "${RC_FILE}"
+  else
+    sed -i '/^[[:space:]]*alias[[:space:]]\+bitsentry=/d' "${RC_FILE}"
+  fi
+  echo "[+] Removed stale bitsentry alias from ${RC_FILE}"
+fi
+
 if [[ "${OS_NAME}" == "Darwin" ]] && [[ "${INSTALL_BIN_PATH}" == *"/sbin/"* ]]; then
   MAC_BIN="/usr/local/bin/bitsentry"
   if [[ ! -f "${MAC_BIN}" ]] || [[ "${INSTALL_BIN_PATH}" -nt "${MAC_BIN}" ]] 2>/dev/null; then
