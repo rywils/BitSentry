@@ -4,6 +4,8 @@ import sqlite3
 import sys
 from pathlib import Path
 
+import pytest
+
 
 _BITPROBE = Path(__file__).resolve().parents[1] / "bitprobe"
 if str(_BITPROBE) not in sys.path:
@@ -45,6 +47,14 @@ def test_only_full_coverage_is_bootstrap_complete(monkeypatch, tmp_path: Path) -
     assert manager.cve_db_is_complete() is True
 
 
+def test_metadata_rejects_unknown_keys(monkeypatch, tmp_path: Path) -> None:
+    manager, _, _ = _isolate(monkeypatch, tmp_path)
+    manager.init_cve_database()
+
+    with pytest.raises(ValueError, match="Unknown CVE metadata keys"):
+        manager.write_cve_metadata({"unexpected": "value"})
+
+
 def test_sqlite_cursor_overrides_compatibility_state(monkeypatch, tmp_path: Path) -> None:
     manager, state, _ = _isolate(monkeypatch, tmp_path)
     manager.init_cve_database()
@@ -80,3 +90,22 @@ def test_status_uses_coverage_metadata_not_row_threshold(monkeypatch, tmp_path: 
     )
 
     assert manager.describe_cve_db_local_status().startswith("ok (1 CVEs loaded)")
+
+
+def test_invalid_cursor_uses_last_updated_fallback(monkeypatch, tmp_path: Path) -> None:
+    manager, _, _ = _isolate(monkeypatch, tmp_path)
+    manager.init_cve_database()
+    with manager._connect() as conn:
+        conn.execute(
+            "INSERT INTO cve_entries (cve_id, description) VALUES (?, ?)",
+            ("CVE-2026-0001", "test"),
+        )
+        conn.executemany(
+            "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
+            [
+                ("nvd_cursor", "invalid"),
+                ("last_updated", manager._utcnow().isoformat()),
+            ],
+        )
+
+    assert manager.cve_db_needs_update() is False

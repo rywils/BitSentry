@@ -264,6 +264,9 @@ Examples:
                     snapshot_only=snapshot_only,
                     verbose=verbose,
                 )
+            if snapshot_only:
+                print("[+] CVE database snapshot installed")
+                return 0
             print(f"[+] CVE database updated with {count} entries")
             return 0
         except Exception as e:

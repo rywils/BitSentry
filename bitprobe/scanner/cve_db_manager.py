@@ -10,6 +10,7 @@ import json
 import os
 import time
 import requests
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional, Any
 from packaging import version
@@ -20,8 +21,6 @@ from scanner.update_state import get_state_timestamp, set_state_timestamp, merge
 
 NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 DEFAULT_STALE_DAYS = 7
-# Below this count, local DB is treated as a short publication window bootstrap, not full coverage.
-MIN_PRODUCTION_CVE_COUNT = 50_000
 # NVD rate limits (https://nvd.nist.gov/developers/start-here): 5 req/30s
 # without a key (6.0s spacing), 50 req/30s with one (0.6s spacing, +margin).
 NVD_SLEEP_NO_KEY = 6.0
@@ -36,6 +35,15 @@ CVE_METADATA_KEYS = (
     "coverage_end",
     "nvd_cursor",
 )
+SYNC_PROGRESS_SQL = (
+    "UPDATE sync_state SET next_start_index = ?, total_expected = ? WHERE id = 1"
+)
+_MIRROR_COMPAT_STATE = True
+
+
+def _set_compatibility_cursor(value: str) -> None:
+    if _MIRROR_COMPAT_STATE:
+        set_state_timestamp("cve", "last_modified", value)
 
 
 def _utcnow() -> datetime:
@@ -196,7 +204,7 @@ def bootstrap_cve_state() -> str | None:
             cursor.execute("SELECT value FROM metadata WHERE key = 'nvd_cursor'")
             sqlite_cursor = cursor.fetchone()
             if sqlite_cursor and sqlite_cursor[0]:
-                set_state_timestamp("cve", "last_modified", sqlite_cursor[0])
+                _set_compatibility_cursor(sqlite_cursor[0])
                 return sqlite_cursor[0]
             cursor.execute("SELECT COUNT(*) FROM cve_entries")
             if cursor.fetchone()[0] == 0:
@@ -207,7 +215,7 @@ def bootstrap_cve_state() -> str | None:
             )
             row = cursor.fetchone()
             if row and row[0]:
-                set_state_timestamp("cve", "last_modified", row[0])
+                _set_compatibility_cursor(row[0])
                 return row[0]
         finally:
             conn.close()
@@ -231,7 +239,7 @@ def bootstrap_cve_state() -> str | None:
             seeded = _format_nvd_datetime(dt)
         except ValueError:
             seeded = last_update
-        set_state_timestamp("cve", "last_modified", seeded)
+        _set_compatibility_cursor(seeded)
         return seeded
 
     return None
@@ -288,7 +296,7 @@ def mirror_sqlite_cursor_to_state() -> str | None:
         return None
     cursor = read_cve_metadata().get("nvd_cursor")
     if cursor:
-        set_state_timestamp("cve", "last_modified", cursor)
+        _set_compatibility_cursor(cursor)
     return cursor
 
 
@@ -324,10 +332,7 @@ def checkpoint_sync_page(
     next_start_index: int,
     total_expected: int,
 ) -> None:
-    conn.execute(
-        "UPDATE sync_state SET next_start_index = ?, total_expected = ? WHERE id = 1",
-        (next_start_index, total_expected),
-    )
+    conn.execute(SYNC_PROGRESS_SQL, (next_start_index, total_expected))
     conn.commit()
 
 
@@ -359,8 +364,12 @@ def cve_db_needs_update(stale_days: int = DEFAULT_STALE_DAYS) -> bool:
         cursor.execute("SELECT value FROM metadata WHERE key = 'nvd_cursor'")
         row = cursor.fetchone()
         if row and row[0]:
-            last_dt = datetime.fromisoformat(_normalize_nvd_timestamp(row[0]))
-            return _utcnow() - last_dt > timedelta(days=stale_days)
+            try:
+                last_dt = datetime.fromisoformat(_normalize_nvd_timestamp(row[0]))
+            except ValueError:
+                pass
+            else:
+                return _utcnow() - last_dt > timedelta(days=stale_days)
         cursor.execute("SELECT value FROM metadata WHERE key = 'last_updated'")
         row = cursor.fetchone()
         if not row or not row[0]:
@@ -549,7 +558,7 @@ def _update_cve_database_unlocked(
         now_dt = _utcnow()
         if full_sync and not raw_full_sync:
             metadata = read_cve_metadata()
-            with _connect() as state_conn:
+            with closing(_connect()) as state_conn:
                 resume_row = state_conn.execute(
                     "SELECT mode, window_start, window_end, completed "
                     "FROM sync_state WHERE id = 1"
@@ -564,7 +573,7 @@ def _update_cve_database_unlocked(
                 build_started = datetime.fromisoformat(metadata["coverage_end"])
             else:
                 build_started = now_dt
-                with _connect() as reset_conn:
+                with closing(_connect()) as reset_conn:
                     reset_conn.execute("DELETE FROM cve_products")
                     reset_conn.execute("DELETE FROM cve_cpes")
                     reset_conn.execute("DELETE FROM cve_entries")
@@ -620,7 +629,7 @@ def _update_cve_database_unlocked(
                     "nvd_cursor": completed,
                 }
             )
-            set_state_timestamp("cve", "last_modified", completed)
+            _set_compatibility_cursor(completed)
             return total
 
         if incremental and state_last_modified and existing_count and not force:
@@ -660,9 +669,10 @@ def _update_cve_database_unlocked(
                         "nvd_cursor": coverage_end,
                     }
                 )
-                set_state_timestamp("cve", "last_modified", coverage_end)
+                _set_compatibility_cursor(coverage_end)
                 return total
 
+    use_incremental = False
     if _window is not None:
         window_kind, window_start_dt, window_end_dt = _window
         window_start_text = _format_nvd_datetime(window_start_dt)
@@ -685,7 +695,11 @@ def _update_cve_database_unlocked(
 
     else:
         use_incremental = (
-            incremental and state_last_modified and not force and not full_sync
+            incremental
+            and state_last_modified
+            and not force
+            and not full_sync
+            and not raw_full_sync
         )
 
     if _window is not None:
@@ -936,7 +950,7 @@ def _update_cve_database_unlocked(
     )
     if use_incremental:
         write_cve_metadata({"nvd_cursor": completed_window_end})
-        set_state_timestamp("cve", "last_modified", completed_window_end)
+        _set_compatibility_cursor(completed_window_end)
     elif saw_vulnerabilities and not (
         _window is not None and _window[0] == "full-publication"
     ):
@@ -949,7 +963,7 @@ def _update_cve_database_unlocked(
                 "coverage_end": params.get("pubEndDate", update_end),
             }
         )
-        set_state_timestamp("cve", "last_modified", cursor_value)
+        _set_compatibility_cursor(cursor_value)
     
     print(
         f"[+] CVE database updated: {total_updated} CVEs added/updated "
@@ -970,16 +984,67 @@ def update_cve_database(
 ) -> int:
     """Run a CVE update while holding the shared mutable-data lock."""
     with bitsentry_update_lock():
-        return _update_cve_database_unlocked(
-            days=days,
-            years=years,
-            full_sync=full_sync,
-            raw_full_sync=raw_full_sync,
-            api_key=api_key,
-            incremental=incremental,
-            force=force,
-            verbose=verbose,
+        if not full_sync or raw_full_sync:
+            return _update_cve_database_unlocked(
+                days=days,
+                years=years,
+                full_sync=full_sync,
+                raw_full_sync=raw_full_sync,
+                api_key=api_key,
+                incremental=incremental,
+                force=force,
+                verbose=verbose,
+            )
+
+        global CVE_DB_PATH, CVE_META_PATH, _MIRROR_COMPAT_STATE
+        destination = Path(CVE_DB_PATH)
+        staging = destination.with_name(f".{destination.name}.full-build")
+        metadata_destination = Path(CVE_META_PATH)
+        metadata_staging = metadata_destination.with_name(
+            f".{metadata_destination.name}.full-build"
         )
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        active_path = CVE_DB_PATH
+        active_metadata_path = CVE_META_PATH
+        mirror_state = _MIRROR_COMPAT_STATE
+        try:
+            CVE_DB_PATH = str(staging)
+            CVE_META_PATH = str(metadata_staging)
+            _MIRROR_COMPAT_STATE = False
+            count = _update_cve_database_unlocked(
+                days=days,
+                years=years,
+                full_sync=True,
+                raw_full_sync=False,
+                api_key=api_key,
+                incremental=incremental,
+                force=force,
+                verbose=verbose,
+            )
+            with closing(_connect()) as conn:
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                conn.execute("PRAGMA journal_mode=DELETE")
+                conn.commit()
+        finally:
+            CVE_DB_PATH = active_path
+            CVE_META_PATH = active_metadata_path
+            _MIRROR_COMPAT_STATE = mirror_state
+        if destination.exists():
+            with closing(sqlite3.connect(destination, timeout=0)) as conn:
+                conn.execute("PRAGMA busy_timeout=0")
+                busy, _, _ = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+                if busy:
+                    raise RuntimeError("current CVE database is busy")
+                conn.execute("PRAGMA journal_mode=DELETE")
+            if any(Path(f"{destination}{suffix}").exists() for suffix in ("-wal", "-shm")):
+                raise RuntimeError("current CVE database still has active WAL state")
+        os.replace(staging, destination)
+        if metadata_staging.exists():
+            os.replace(metadata_staging, metadata_destination)
+        cursor = read_cve_metadata().get("nvd_cursor")
+        if cursor:
+            set_state_timestamp("cve", "last_modified", cursor)
+        return count
 
 
 def _extract_cpe_matches_from_node(node: Dict) -> List[Dict]:
@@ -1146,10 +1211,7 @@ def _store_cves_batch(
             """, unique_products)
 
         if checkpoint is not None:
-            cursor.execute(
-                "UPDATE sync_state SET next_start_index = ?, total_expected = ? WHERE id = 1",
-                checkpoint,
-            )
+            cursor.execute(SYNC_PROGRESS_SQL, checkpoint)
 
         conn.commit()
     finally:

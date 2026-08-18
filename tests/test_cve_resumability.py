@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import sys
+from contextlib import closing
 from pathlib import Path
 from unittest import mock
+
+import pytest
 
 
 _BITPROBE = Path(__file__).resolve().parents[1] / "bitprobe"
@@ -12,10 +15,13 @@ if str(_BITPROBE) not in sys.path:
 
 def _db(monkeypatch, tmp_path: Path):
     import scanner.cve_db_manager as manager
+    import scanner.update_state as state
 
     monkeypatch.setattr(manager, "CVE_DB_PATH", str(tmp_path / "cve.sqlite"))
     monkeypatch.setattr(manager, "CVE_META_PATH", str(tmp_path / "meta.json"))
     monkeypatch.setattr(manager, "migrate_legacy_cve_database", lambda: False)
+    monkeypatch.setattr(state, "STATE_DIR", tmp_path / "state")
+    monkeypatch.setattr(state, "STATE_PATH", tmp_path / "state" / "state.json")
     manager.init_cve_database()
     return manager
 
@@ -61,8 +67,10 @@ def test_completed_window_does_not_resume(monkeypatch, tmp_path: Path) -> None:
 
 def test_resumed_full_build_preserves_committed_rows(monkeypatch, tmp_path: Path) -> None:
     manager = _db(monkeypatch, tmp_path)
+    manager.CVE_DB_PATH = str(tmp_path / ".cve.sqlite.full-build")
+    manager.init_cve_database()
     target = "2026-08-18T00:00:00.000"
-    with manager._connect() as conn:
+    with closing(manager._connect()) as conn:
         conn.execute(
             "INSERT INTO cve_entries (cve_id, description) VALUES (?, ?)",
             ("CVE-1999-0001", "already committed"),
@@ -81,6 +89,9 @@ def test_resumed_full_build_preserves_committed_rows(monkeypatch, tmp_path: Path
                 "2026-08-17T00:00:00.000",
             ),
         )
+        conn.commit()
+
+    manager.CVE_DB_PATH = str(tmp_path / "cve.sqlite")
 
     response = mock.Mock(status_code=200)
     response.json.return_value = {"vulnerabilities": [], "totalResults": 0}
@@ -93,3 +104,24 @@ def test_resumed_full_build_preserves_committed_rows(monkeypatch, tmp_path: Path
             "SELECT COUNT(*) FROM cve_entries WHERE cve_id='CVE-1999-0001'"
         ).fetchone()[0] == 1
     assert manager.read_cve_metadata()["coverage_mode"] == "full"
+
+
+def test_failed_full_build_preserves_active_database(monkeypatch, tmp_path: Path) -> None:
+    manager = _db(monkeypatch, tmp_path)
+    with closing(manager._connect()) as conn:
+        conn.execute(
+            "INSERT INTO cve_entries (cve_id, description) VALUES (?, ?)",
+            ("CVE-2026-0001", "active"),
+        )
+        conn.commit()
+    monkeypatch.setattr(
+        manager,
+        "_update_cve_database_unlocked",
+        mock.Mock(side_effect=RuntimeError("interrupted")),
+    )
+
+    with pytest.raises(RuntimeError, match="interrupted"):
+        manager.update_cve_database(full_sync=True)
+
+    with closing(manager._connect()) as conn:
+        assert conn.execute("SELECT description FROM cve_entries").fetchone()[0] == "active"

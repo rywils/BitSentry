@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+from types import ModuleType
 from pathlib import Path
 from unittest import mock
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,7 +15,7 @@ if str(BITPROBE) not in sys.path:
     sys.path.insert(0, str(BITPROBE))
 
 
-def _cli():
+def _cli() -> ModuleType:
     spec = importlib.util.spec_from_file_location("bitprobe_cli_for_test", BITPROBE / "bitprobe.py")
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -20,7 +23,7 @@ def _cli():
     return module
 
 
-def test_default_update_uses_snapshot_policy(monkeypatch) -> None:
+def test_default_update_uses_snapshot_policy(monkeypatch: pytest.MonkeyPatch) -> None:
     cli = _cli()
     policy = mock.Mock(return_value=4)
     direct = mock.Mock()
@@ -33,7 +36,7 @@ def test_default_update_uses_snapshot_policy(monkeypatch) -> None:
     direct.assert_not_called()
 
 
-def test_explicit_years_skips_snapshot(monkeypatch) -> None:
+def test_explicit_years_skips_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
     cli = _cli()
     policy = mock.Mock()
     direct = mock.Mock(return_value=2)
@@ -46,7 +49,10 @@ def test_explicit_years_skips_snapshot(monkeypatch) -> None:
     assert direct.call_args.kwargs["years"] == 2
 
 
-def test_snapshot_only_uses_snapshot_without_direct_nvd(monkeypatch) -> None:
+def test_snapshot_only_uses_snapshot_without_direct_nvd(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     cli = _cli()
     policy = mock.Mock(return_value=0)
     direct = mock.Mock()
@@ -57,9 +63,12 @@ def test_snapshot_only_uses_snapshot_without_direct_nvd(monkeypatch) -> None:
     assert cli.main() == 0
     policy.assert_called_once_with(snapshot_only=True, verbose=False)
     direct.assert_not_called()
+    assert "snapshot installed" in capsys.readouterr().out
 
 
-def test_raw_full_exposes_best_effort_unfiltered_escape_hatch(monkeypatch) -> None:
+def test_raw_full_exposes_best_effort_unfiltered_escape_hatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     cli = _cli()
     direct = mock.Mock(return_value=1)
     monkeypatch.setattr(cli, "update_cve_database", direct)

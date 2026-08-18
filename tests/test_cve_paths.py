@@ -22,13 +22,14 @@ def _valid_legacy_db(path: Path) -> None:
 
 def test_cve_paths_honor_data_dir_override(monkeypatch, tmp_path: Path) -> None:
     target = tmp_path / "custom-data"
-    monkeypatch.setenv("BITSENTRY_DATA_DIR", str(target))
-
     import scanner.paths as paths
 
-    paths = importlib.reload(paths)
-    assert Path(paths.CVE_DB_PATH) == target / "cve_db.sqlite"
-    assert Path(paths.CVE_META_PATH) == target / "cve_meta.json"
+    with monkeypatch.context() as patch:
+        patch.setenv("BITSENTRY_DATA_DIR", str(target))
+        paths = importlib.reload(paths)
+        assert Path(paths.CVE_DB_PATH) == target / "cve_db.sqlite"
+        assert Path(paths.CVE_META_PATH) == target / "cve_meta.json"
+    importlib.reload(paths)
 
 
 def test_migration_copies_valid_legacy_database_atomically(tmp_path: Path) -> None:

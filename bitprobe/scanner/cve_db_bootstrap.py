@@ -10,6 +10,7 @@ import os
 import shutil
 import sqlite3
 import tempfile
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -81,6 +82,18 @@ def validate_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
         raise SnapshotValidationError("invalid sha256_gz")
     if not isinstance(manifest["nvd_cursor"], str) or not manifest["nvd_cursor"]:
         raise SnapshotValidationError("invalid nvd_cursor")
+    artifact = manifest["artifact"]
+    if (
+        not isinstance(artifact, str)
+        or not artifact
+        or "\x00" in artifact
+        or "/" in artifact
+        or "\\" in artifact
+        or ":" in artifact
+        or artifact in {".", ".."}
+        or Path(artifact).name != artifact
+    ):
+        raise SnapshotValidationError("invalid artifact")
     return manifest
 
 
@@ -164,7 +177,7 @@ def decompress_snapshot(source: Path, destination: Path, manifest: dict[str, Any
 def validate_snapshot_database(path: Path, manifest: dict[str, Any]) -> dict[str, str | None]:
     validate_manifest(manifest)
     try:
-        with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as conn:
+        with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True)) as conn:
             if conn.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
                 raise SnapshotValidationError("SQLite integrity_check failed")
             tables = {
@@ -201,7 +214,7 @@ def _checkpoint_existing_database(destination: Path) -> None:
         raise SnapshotValidationError("SQLite sidecar exists without the main database")
 
     try:
-        with sqlite3.connect(destination, timeout=0) as conn:
+        with closing(sqlite3.connect(destination, timeout=0)) as conn:
             conn.execute("PRAGMA busy_timeout=0")
             busy, _, _ = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
     except sqlite3.Error as exc:
@@ -244,9 +257,10 @@ def install_snapshot_atomically(
             ) as temp_file:
                 temp_path = Path(temp_file.name)
             shutil.copyfile(snapshot_db, temp_path)
-            with sqlite3.connect(temp_path) as conn:
+            with closing(sqlite3.connect(temp_path)) as conn:
                 conn.execute("PRAGMA journal_mode=DELETE")
                 conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                conn.commit()
             validate_snapshot_database(temp_path, manifest)
             os.replace(temp_path, destination)
             temp_path = None
@@ -285,10 +299,14 @@ def update_with_snapshot_policy(
     cursor = manager.read_cve_metadata().get("nvd_cursor") if complete else None
     cursor_too_old = False
     if cursor:
-        parsed = datetime.fromisoformat(cursor.replace("Z", "+00:00"))
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        cursor_too_old = datetime.now(timezone.utc) - parsed > timedelta(days=119)
+        try:
+            parsed = datetime.fromisoformat(cursor.replace("Z", "+00:00"))
+        except ValueError:
+            cursor_too_old = True
+        else:
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            cursor_too_old = datetime.now(timezone.utc) - parsed > timedelta(days=119)
 
     if not complete or cursor_too_old:
         try:

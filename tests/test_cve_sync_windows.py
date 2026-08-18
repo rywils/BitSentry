@@ -74,6 +74,8 @@ def test_years_mode_sends_only_nvd_safe_windows(monkeypatch, tmp_path: Path) -> 
     monkeypatch.setattr(manager, "migrate_legacy_cve_database", lambda: False)
     monkeypatch.setattr(state, "STATE_DIR", tmp_path / "state")
     monkeypatch.setattr(state, "STATE_PATH", tmp_path / "state" / "state.json")
+    now = datetime(2026, 8, 18)
+    monkeypatch.setattr(manager, "_utcnow", lambda: now)
     seen = []
 
     def response_for(params, *_args, **_kwargs):
@@ -85,7 +87,8 @@ def test_years_mode_sends_only_nvd_safe_windows(monkeypatch, tmp_path: Path) -> 
     monkeypatch.setattr(manager, "_nvd_get", response_for)
     manager.update_cve_database(years=1, incremental=False)
 
-    assert len(seen) == 4
+    start = now - timedelta(days=365)
+    assert len(seen) == len(list(manager.iter_nvd_windows(start, now)))
     for params in seen:
         start = datetime.fromisoformat(params["pubStartDate"])
         end = datetime.fromisoformat(params["pubEndDate"])
@@ -94,3 +97,27 @@ def test_years_mode_sends_only_nvd_safe_windows(monkeypatch, tmp_path: Path) -> 
     assert metadata["coverage_mode"] == "windowed"
     assert metadata["coverage_start"] == seen[0]["pubStartDate"]
     assert metadata["coverage_end"] == seen[-1]["pubEndDate"]
+
+
+def test_raw_full_never_uses_date_filters(monkeypatch, tmp_path: Path) -> None:
+    import scanner.cve_db_manager as manager
+    import scanner.update_state as state
+
+    monkeypatch.setattr(manager, "CVE_DB_PATH", str(tmp_path / "cve.sqlite"))
+    monkeypatch.setattr(manager, "CVE_META_PATH", str(tmp_path / "meta.json"))
+    monkeypatch.setattr(manager, "migrate_legacy_cve_database", lambda: False)
+    monkeypatch.setattr(state, "STATE_DIR", tmp_path / "state")
+    monkeypatch.setattr(state, "STATE_PATH", tmp_path / "state" / "state.json")
+    seen = []
+
+    def response_for(params, *_args, **_kwargs):
+        seen.append(dict(params))
+        response = mock.Mock(status_code=200)
+        response.json.return_value = {"vulnerabilities": [], "totalResults": 0}
+        return response
+
+    monkeypatch.setattr(manager, "_nvd_get", response_for)
+    manager.update_cve_database(full_sync=True, raw_full_sync=True, force=False)
+
+    assert len(seen) == 1
+    assert not {"lastModStartDate", "lastModEndDate", "pubStartDate", "pubEndDate"} & seen[0].keys()

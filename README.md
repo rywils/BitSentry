@@ -10,6 +10,7 @@ BitSentry is a CLI-first security assessment suite. The public build focuses on 
 - web-focused vulnerability scanning
 
 It is built to run cleanly in local shells, CI pipelines, and Docker.
+Supported hosts are Linux and macOS.
 > Use only on systems you own or are explicitly authorized to test.
 
 ## Current Product Status

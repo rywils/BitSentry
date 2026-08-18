@@ -78,27 +78,50 @@ def test_verify_snapshot_rejects_checksum_mismatch(tmp_path: Path) -> None:
         verify_snapshot(gz, manifest)
 
 
-def test_fetch_manifest_wraps_transport_errors() -> None:
+def test_fetch_manifest_wraps_transport_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     from scanner.cve_db_bootstrap import SnapshotError, fetch_snapshot_manifest
 
-    session = pytest.MonkeyPatch()
     client = requests.Session()
-    session.setattr(client, "get", lambda *args, **kwargs: (_ for _ in ()).throw(requests.Timeout("offline")))
-    try:
-        with pytest.raises(SnapshotError, match="download snapshot manifest"):
-            fetch_snapshot_manifest(session=client)
-    finally:
-        session.undo()
+    monkeypatch.setattr(
+        client,
+        "get",
+        lambda *args, **kwargs: (_ for _ in ()).throw(requests.Timeout("offline")),
+    )
+    with pytest.raises(SnapshotError, match="download snapshot manifest"):
+        fetch_snapshot_manifest(session=client)
 
 
-def test_download_snapshot_wraps_transport_errors(tmp_path: Path) -> None:
+def test_download_snapshot_wraps_transport_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     from scanner.cve_db_bootstrap import SnapshotError, download_snapshot
 
     _, _, manifest = _artifact(tmp_path)
     client = requests.Session()
-    client.get = lambda *args, **kwargs: (_ for _ in ()).throw(requests.ConnectionError("offline"))
+    monkeypatch.setattr(
+        client,
+        "get",
+        lambda *args, **kwargs: (_ for _ in ()).throw(requests.ConnectionError("offline")),
+    )
     with pytest.raises(SnapshotError, match="download CVE snapshot"):
         download_snapshot(manifest, tmp_path / "download.gz", session=client)
+
+
+@pytest.mark.parametrize(
+    "artifact",
+    ["", ".", "..", "../db.gz", "dir/db.gz", "dir\\db.gz", "C:db.gz", "db\x00.gz"],
+)
+def test_validate_manifest_rejects_unsafe_artifact(
+    tmp_path: Path,
+    artifact: str,
+) -> None:
+    from scanner.cve_db_bootstrap import SnapshotValidationError, validate_manifest
+
+    _, _, manifest = _artifact(tmp_path)
+    manifest["artifact"] = artifact
+    with pytest.raises(SnapshotValidationError, match="artifact"):
+        validate_manifest(manifest)
 
 
 def test_validate_database_rejects_manifest_cursor_mismatch(tmp_path: Path) -> None:

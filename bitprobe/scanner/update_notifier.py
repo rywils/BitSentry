@@ -12,8 +12,6 @@ from scanner.cve_db_bootstrap import update_with_snapshot_policy
 
 META_PATH = CVE_META_PATH
 REMINDER_DAYS = 14
-# Fast bootstrap on scan startup (not the full NVD corpus)
-SCAN_BOOTSTRAP_DAYS = 7
 
 
 def _load_meta():
@@ -23,7 +21,7 @@ def _load_meta():
         return json.load(f)
 
 
-def check_and_notify(auto_update: bool = True, bootstrap_days: int = SCAN_BOOTSTRAP_DAYS):
+def check_and_notify(auto_update: bool = True):
     """
     Runs at scan startup.
     - Installs a verified full snapshot when local coverage is incomplete

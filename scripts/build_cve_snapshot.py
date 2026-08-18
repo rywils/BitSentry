@@ -10,6 +10,7 @@ import json
 import os
 import sqlite3
 import tempfile
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -22,10 +23,12 @@ REQUIRED_METADATA = (
     "coverage_end",
     "nvd_cursor",
 )
+MAX_COMPRESSED_SIZE = 512 * 1024 * 1024
+MAX_UNCOMPRESSED_SIZE = 2 * 1024 * 1024 * 1024
 
 
 def _inspect_database(path: Path) -> tuple[dict[str, str | None], int]:
-    with sqlite3.connect(path) as conn:
+    with closing(sqlite3.connect(path)) as conn:
         conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         if conn.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
             raise RuntimeError("CVE database failed integrity_check")
@@ -54,6 +57,9 @@ def build_snapshot(
     source_commit: str,
 ) -> dict[str, object]:
     metadata, count = _inspect_database(database)
+    uncompressed_size = database.stat().st_size
+    if uncompressed_size > MAX_UNCOMPRESSED_SIZE:
+        raise RuntimeError("CVE database exceeds the uncompressed size limit")
     output_dir.mkdir(parents=True, exist_ok=True)
     artifact = output_dir / "cve_db.sqlite.gz"
     with database.open("rb") as source, artifact.open("wb") as raw_output:
@@ -61,7 +67,14 @@ def build_snapshot(
             for block in iter(lambda: source.read(1024 * 1024), b""):
                 output.write(block)
 
-    compressed = artifact.read_bytes()
+    compressed_size = artifact.stat().st_size
+    if compressed_size > MAX_COMPRESSED_SIZE:
+        artifact.unlink()
+        raise RuntimeError("CVE snapshot exceeds the compressed size limit")
+    digest = hashlib.sha256()
+    with artifact.open("rb") as source:
+        for block in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(block)
     manifest: dict[str, object] = {
         "format_version": 1,
         "schema_version": int(metadata["schema_version"] or 0),
@@ -72,9 +85,9 @@ def build_snapshot(
         "nvd_cursor": metadata["nvd_cursor"],
         "cve_count": count,
         "artifact": artifact.name,
-        "sha256_gz": hashlib.sha256(compressed).hexdigest(),
-        "compressed_size": len(compressed),
-        "uncompressed_size": database.stat().st_size,
+        "sha256_gz": digest.hexdigest(),
+        "compressed_size": compressed_size,
+        "uncompressed_size": uncompressed_size,
         "source_commit": source_commit,
     }
     manifest_path = output_dir / "manifest.json"

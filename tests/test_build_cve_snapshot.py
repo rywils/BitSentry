@@ -7,6 +7,8 @@ import json
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 
 def _load_builder():
     path = Path(__file__).resolve().parents[1] / "scripts" / "build_cve_snapshot.py"
@@ -40,9 +42,11 @@ def test_build_snapshot_copies_sqlite_metadata_and_hashes_artifact(tmp_path: Pat
     builder = _load_builder()
     db = tmp_path / "cve.sqlite"
     dist = tmp_path / "dist"
+    second_dist = tmp_path / "dist-second"
     _database(db)
 
     manifest = builder.build_snapshot(db, dist, source_commit="deadbeef")
+    second_manifest = builder.build_snapshot(db, second_dist, source_commit="deadbeef")
 
     artifact = dist / "cve_db.sqlite.gz"
     on_disk = json.loads((dist / "manifest.json").read_text(encoding="utf-8"))
@@ -51,5 +55,16 @@ def test_build_snapshot_copies_sqlite_metadata_and_hashes_artifact(tmp_path: Pat
     assert manifest["nvd_cursor"] == "2026-08-18T00:00:00.000"
     assert manifest["cve_count"] == 1
     assert manifest["sha256_gz"] == hashlib.sha256(artifact.read_bytes()).hexdigest()
+    assert second_manifest["sha256_gz"] == manifest["sha256_gz"]
     with gzip.open(artifact, "rb") as source:
         assert source.read() == db.read_bytes()
+
+
+def test_build_snapshot_rejects_oversized_database(monkeypatch, tmp_path: Path) -> None:
+    builder = _load_builder()
+    db = tmp_path / "cve.sqlite"
+    _database(db)
+    monkeypatch.setattr(builder, "MAX_UNCOMPRESSED_SIZE", 0)
+
+    with pytest.raises(RuntimeError, match="uncompressed size limit"):
+        builder.build_snapshot(db, tmp_path / "dist", source_commit="deadbeef")

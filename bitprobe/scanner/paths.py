@@ -6,6 +6,7 @@ import os
 import shutil
 import sqlite3
 import tempfile
+from contextlib import closing
 from pathlib import Path
 
 # bitprobe/ directory (parent of scanner/)
@@ -30,7 +31,7 @@ _CVE_REQUIRED_TABLES = frozenset(
 
 def _valid_cve_database(path: Path) -> bool:
     try:
-        with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as conn:
+        with closing(sqlite3.connect(f"file:{path}?mode=ro", uri=True)) as conn:
             if conn.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
                 return False
             tables = {

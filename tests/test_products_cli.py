@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from unittest import mock
 
+import pytest
+
 import products
 from bitsentry import main as bitsentry_main
 
@@ -63,25 +65,27 @@ def test_update_cve_db_passthrough() -> None:
     assert "7" in cmd
 
 
-def test_update_cve_db_default_preserves_snapshot_policy() -> None:
+def test_update_cve_db_default_preserves_snapshot_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     completed = mock.Mock(returncode=0)
-    with (
-        mock.patch("subprocess.run", return_value=completed) as run_mock,
-        mock.patch("sys.argv", ["bitsentry", "update-cve-db"]),
-    ):
-        code = bitsentry_main()
+    run_mock = mock.Mock(return_value=completed)
+    monkeypatch.setattr("subprocess.run", run_mock)
+    monkeypatch.setattr("sys.argv", ["bitsentry", "update-cve-db"])
+    code = bitsentry_main()
     assert code == 0
     assert run_mock.call_args.args[0][2:] == ["update-cve-db"]
 
 
-def test_update_cve_db_snapshot_flags_are_forwarded() -> None:
+def test_update_cve_db_snapshot_flags_are_forwarded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     completed = mock.Mock(returncode=0)
     for flag in ("--snapshot-only", "--no-snapshot", "--raw-full"):
-        with (
-            mock.patch("subprocess.run", return_value=completed) as run_mock,
-            mock.patch("sys.argv", ["bitsentry", "update-cve-db", flag]),
-        ):
-            code = bitsentry_main()
+        run_mock = mock.Mock(return_value=completed)
+        monkeypatch.setattr("subprocess.run", run_mock)
+        monkeypatch.setattr("sys.argv", ["bitsentry", "update-cve-db", flag])
+        code = bitsentry_main()
         assert code == 0
         assert flag in run_mock.call_args.args[0]
 

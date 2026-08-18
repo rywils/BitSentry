@@ -70,7 +70,7 @@ print_before_first_scan_notice() {
   echo -e "${b}  2) export NVD_API_KEY=\"your-nvd-api-key\"${r}  ${d}(optional, faster incremental sync)${r}"
 
   if [[ "${CVE_NEEDS_BOOTSTRAP}" -eq 1 ]]; then
-    echo -e "${y}  3) bitsentry update-cve-db${r}  ${d}(verified snapshot + catch-up)${r}"
+    echo -e "${y}  3) bitsentry update-cve-db${r}  ${d}(recommended; skipping may delay the first scan)${r}"
   else
     echo -e "${b}  3) bitsentry update-cve-db${r}  ${d}(CVE loaded — incremental refresh)${r}"
   fi

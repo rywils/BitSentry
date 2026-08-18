@@ -38,10 +38,13 @@ def test_lock_contention_fails_without_waiting(tmp_path: Path) -> None:
 
 def test_cve_update_uses_shared_lock(monkeypatch, tmp_path: Path) -> None:
     import scanner.cve_db_manager as manager
+    import scanner.update_state as state
 
     monkeypatch.setattr(manager, "CVE_DB_PATH", str(tmp_path / "cve.sqlite"))
     monkeypatch.setattr(manager, "CVE_META_PATH", str(tmp_path / "meta.json"))
     monkeypatch.setattr(manager, "migrate_legacy_cve_database", lambda: False)
+    monkeypatch.setattr(state, "STATE_DIR", tmp_path / "state")
+    monkeypatch.setattr(state, "STATE_PATH", tmp_path / "state" / "state.json")
     lock = mock.Mock(return_value=nullcontext())
     monkeypatch.setattr(manager, "bitsentry_update_lock", lock)
     response = mock.Mock(status_code=200)
