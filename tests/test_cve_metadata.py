@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import sqlite3
 import sys
+from contextlib import closing
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -95,7 +97,8 @@ def test_status_uses_coverage_metadata_not_row_threshold(monkeypatch, tmp_path: 
 def test_invalid_cursor_uses_last_updated_fallback(monkeypatch, tmp_path: Path) -> None:
     manager, _, _ = _isolate(monkeypatch, tmp_path)
     manager.init_cve_database()
-    with manager._connect() as conn:
+    now = manager._utcnow()
+    with closing(manager._connect()) as conn:
         conn.execute(
             "INSERT INTO cve_entries (cve_id, description) VALUES (?, ?)",
             ("CVE-2026-0001", "test"),
@@ -104,8 +107,18 @@ def test_invalid_cursor_uses_last_updated_fallback(monkeypatch, tmp_path: Path) 
             "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
             [
                 ("nvd_cursor", "invalid"),
-                ("last_updated", manager._utcnow().isoformat()),
+                ("last_updated", (now - timedelta(days=30)).isoformat()),
             ],
         )
+        conn.commit()
+
+    assert manager.cve_db_needs_update() is True
+
+    with closing(manager._connect()) as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
+            ("last_updated", now.isoformat()),
+        )
+        conn.commit()
 
     assert manager.cve_db_needs_update() is False

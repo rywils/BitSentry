@@ -88,11 +88,20 @@ def test_years_mode_sends_only_nvd_safe_windows(monkeypatch, tmp_path: Path) -> 
     manager.update_cve_database(years=1, incremental=False)
 
     start = now - timedelta(days=365)
-    assert len(seen) == len(list(manager.iter_nvd_windows(start, now)))
-    for params in seen:
-        start = datetime.fromisoformat(params["pubStartDate"])
-        end = datetime.fromisoformat(params["pubEndDate"])
-        assert end - start <= timedelta(days=119)
+    expected_windows = list(manager.iter_nvd_windows(start, now))
+    actual_windows = [
+        (
+            datetime.fromisoformat(params["pubStartDate"]),
+            datetime.fromisoformat(params["pubEndDate"]),
+        )
+        for params in seen
+    ]
+    assert len(seen) == len(expected_windows)
+    assert actual_windows == expected_windows
+    assert all(
+        window_end - window_start <= timedelta(days=119)
+        for window_start, window_end in actual_windows
+    )
     metadata = manager.read_cve_metadata()
     assert metadata["coverage_mode"] == "windowed"
     assert metadata["coverage_start"] == seen[0]["pubStartDate"]
