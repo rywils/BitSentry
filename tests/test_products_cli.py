@@ -63,6 +63,29 @@ def test_update_cve_db_passthrough() -> None:
     assert "7" in cmd
 
 
+def test_update_cve_db_default_preserves_snapshot_policy() -> None:
+    completed = mock.Mock(returncode=0)
+    with (
+        mock.patch("subprocess.run", return_value=completed) as run_mock,
+        mock.patch("sys.argv", ["bitsentry", "update-cve-db"]),
+    ):
+        code = bitsentry_main()
+    assert code == 0
+    assert run_mock.call_args.args[0][2:] == ["update-cve-db"]
+
+
+def test_update_cve_db_snapshot_flags_are_forwarded() -> None:
+    completed = mock.Mock(returncode=0)
+    for flag in ("--snapshot-only", "--no-snapshot", "--raw-full"):
+        with (
+            mock.patch("subprocess.run", return_value=completed) as run_mock,
+            mock.patch("sys.argv", ["bitsentry", "update-cve-db", flag]),
+        ):
+            code = bitsentry_main()
+        assert code == 0
+        assert flag in run_mock.call_args.args[0]
+
+
 def test_update_db_passthrough_to_asn_updater() -> None:
     completed = mock.Mock(returncode=0)
     with (

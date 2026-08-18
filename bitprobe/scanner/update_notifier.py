@@ -1,6 +1,5 @@
 import json
 import os
-from pathlib import Path
 
 from scanner.cve_db_manager import (
     cve_db_needs_update,
@@ -8,10 +7,10 @@ from scanner.cve_db_manager import (
     bootstrap_cve_state,
     get_stats,
 )
+from scanner.paths import CVE_META_PATH
+from scanner.cve_db_bootstrap import update_with_snapshot_policy
 
-
-_DATA_DIR = Path(__file__).resolve().parents[1] / "data"
-META_PATH = str(_DATA_DIR / "cve_meta.json")
+META_PATH = CVE_META_PATH
 REMINDER_DAYS = 14
 # Fast bootstrap on scan startup (not the full NVD corpus)
 SCAN_BOOTSTRAP_DAYS = 7
@@ -27,8 +26,8 @@ def _load_meta():
 def check_and_notify(auto_update: bool = True, bootstrap_days: int = SCAN_BOOTSTRAP_DAYS):
     """
     Runs at scan startup.
-    - Auto-updates via SQLite + incremental NVD (lastMod) when possible
-    - Empty DB: windowed bootstrap (last N days), never unfiltered 350k+ sync
+    - Installs a verified full snapshot when local coverage is incomplete
+    - Uses incremental NVD synchronization when a current full DB exists
     - Otherwise prints a loud reminder
     """
 
@@ -41,33 +40,8 @@ def check_and_notify(auto_update: bool = True, bootstrap_days: int = SCAN_BOOTST
 
     if auto_update:
         try:
-            stats = get_stats()
-            total = stats.get("total_cves", 0) if isinstance(stats, dict) else 0
-            bootstrap_cve_state()
-            state_ts = None
-            try:
-                from scanner.update_state import get_state_timestamp
-
-                state_ts = get_state_timestamp("cve", "last_modified")
-            except Exception:
-                pass
-
-            if total == 0 or not state_ts:
-                print(
-                    f"[*] Bootstrapping CVE DB (last {bootstrap_days} days of NVD publishes)..."
-                )
-                update_cve_database(
-                    days=bootstrap_days,
-                    incremental=False,
-                    force=False,
-                )
-            else:
-                print("[*] Incremental CVE sync (modified since last cursor)...")
-                update_cve_database(
-                    days=bootstrap_days,
-                    incremental=True,
-                    force=False,
-                )
+            print("[*] Preparing CVE database snapshot and incremental updates...")
+            update_with_snapshot_policy(verbose=False)
             print("=" * 70 + "\n")
             return
         except Exception as exc:

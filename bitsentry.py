@@ -821,8 +821,8 @@ def main() -> int:
     cve_db_parser.add_argument(
         "--days",
         type=int,
-        default=30,
-        help="Publication window for bootstrap when DB is empty (default: 30)",
+        default=None,
+        help="Build a publication-window mirror directly from NVD",
     )
     cve_db_parser.add_argument(
         "--years",
@@ -833,7 +833,22 @@ def main() -> int:
     cve_db_parser.add_argument(
         "--full",
         action="store_true",
-        help="Build full local NVD mirror (~350k CVEs; first-time setup)",
+        help="Rebuild the full local mirror directly from NVD",
+    )
+    cve_db_parser.add_argument(
+        "--raw-full",
+        action="store_true",
+        help="Best-effort unfiltered NVD crawl",
+    )
+    cve_db_parser.add_argument(
+        "--snapshot-only",
+        action="store_true",
+        help="Install the published snapshot without contacting NVD afterward",
+    )
+    cve_db_parser.add_argument(
+        "--no-snapshot",
+        action="store_true",
+        help="Use direct NVD synchronization without downloading a snapshot",
     )
     subparsers.add_parser(
         "cve-stats",
@@ -895,6 +910,9 @@ def main() -> int:
             cmd.extend(["--years", str(args.years)])
         if getattr(args, "full", False):
             cmd.append("--full")
+        for flag in ("raw_full", "snapshot_only", "no_snapshot"):
+            if getattr(args, flag, False):
+                cmd.append(f"--{flag.replace('_', '-')}")
         return subprocess.run(cmd, cwd=str(BITPROBE_PATH.parent)).returncode
     if args.command == "cve-stats":
         cmd = [sys.executable, str(BITPROBE_PATH), "cve-stats"]
