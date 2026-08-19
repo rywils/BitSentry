@@ -10,26 +10,45 @@ import json
 import os
 import time
 import requests
-from datetime import datetime, timedelta
+from contextlib import closing
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional, Any
 from packaging import version
 from pathlib import Path
+from scanner.paths import CVE_DB_PATH, CVE_META_PATH, migrate_legacy_cve_database
+from scanner.update_lock import bitsentry_update_lock
 from scanner.update_state import get_state_timestamp, set_state_timestamp, merge_section
 
-
-_DATA_DIR = Path(__file__).resolve().parents[1] / "data"
-CVE_DB_PATH = str(_DATA_DIR / "cve_db.sqlite")
-CVE_META_PATH = str(_DATA_DIR / "cve_meta.json")
 NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 DEFAULT_STALE_DAYS = 7
-# Below this count, local DB is treated as a short publication window bootstrap, not full coverage.
-MIN_PRODUCTION_CVE_COUNT = 50_000
 # NVD rate limits (https://nvd.nist.gov/developers/start-here): 5 req/30s
 # without a key (6.0s spacing), 50 req/30s with one (0.6s spacing, +margin).
 NVD_SLEEP_NO_KEY = 6.0
 NVD_SLEEP_WITH_KEY = 0.65
 NVD_MAX_RETRIES = 6
 NVD_RETRY_HTTP = frozenset({404, 429, 500, 502, 503, 504})
+CVE_SCHEMA_VERSION = 1
+CVE_METADATA_KEYS = (
+    "schema_version",
+    "coverage_mode",
+    "coverage_start",
+    "coverage_end",
+    "nvd_cursor",
+)
+SYNC_PROGRESS_SQL = (
+    "UPDATE sync_state SET next_start_index = ?, total_expected = ? WHERE id = 1"
+)
+_MIRROR_COMPAT_STATE = True
+
+
+def _set_compatibility_cursor(value: str) -> None:
+    if _MIRROR_COMPAT_STATE:
+        set_state_timestamp("cve", "last_modified", value)
+
+
+def _utcnow() -> datetime:
+    """Naive UTC datetime for compatibility with existing NVD timestamps."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _format_nvd_datetime(dt: datetime) -> str:
@@ -55,6 +74,24 @@ def _normalize_nvd_timestamp(value: str) -> str:
         frac_digits = "".join(c for c in frac if c.isdigit())[:3].ljust(3, "0")
         return f"{base}.{frac_digits}"
     return value
+
+
+def iter_nvd_windows(
+    start: datetime,
+    end: datetime,
+    max_days: int = 119,
+):
+    """Yield contiguous NVD-safe date windows with frozen boundaries."""
+    if max_days <= 0:
+        raise ValueError("max_days must be positive")
+    if end < start:
+        raise ValueError("end must not precede start")
+    cursor = start
+    width = timedelta(days=max_days)
+    while cursor < end:
+        window_end = min(cursor + width, end)
+        yield cursor, window_end
+        cursor = window_end
 
 
 def _nvd_inter_request_sleep(api_key: Optional[str]) -> float:
@@ -160,14 +197,15 @@ def bootstrap_cve_state() -> str | None:
     Seed ~/.bitsentry/state.json cve.last_modified from DB or legacy meta
     so incremental NVD sync works after upgrades or empty state files.
     """
-    existing = get_state_timestamp("cve", "last_modified")
-    if existing:
-        return existing
-
     if os.path.exists(CVE_DB_PATH):
         conn = _connect()
         try:
             cursor = conn.cursor()
+            cursor.execute("SELECT value FROM metadata WHERE key = 'nvd_cursor'")
+            sqlite_cursor = cursor.fetchone()
+            if sqlite_cursor and sqlite_cursor[0]:
+                _set_compatibility_cursor(sqlite_cursor[0])
+                return sqlite_cursor[0]
             cursor.execute("SELECT COUNT(*) FROM cve_entries")
             if cursor.fetchone()[0] == 0:
                 return None
@@ -177,10 +215,14 @@ def bootstrap_cve_state() -> str | None:
             )
             row = cursor.fetchone()
             if row and row[0]:
-                set_state_timestamp("cve", "last_modified", row[0])
+                _set_compatibility_cursor(row[0])
                 return row[0]
         finally:
             conn.close()
+
+    existing = get_state_timestamp("cve", "last_modified")
+    if existing:
+        return existing
 
     # Do not seed from legacy meta when SQLite is empty — that cursor is too
     # stale and triggers huge lastMod incremental pulls (~40k+ CVEs).
@@ -197,10 +239,106 @@ def bootstrap_cve_state() -> str | None:
             seeded = _format_nvd_datetime(dt)
         except ValueError:
             seeded = last_update
-        set_state_timestamp("cve", "last_modified", seeded)
+        _set_compatibility_cursor(seeded)
         return seeded
 
     return None
+
+
+def read_cve_metadata(
+    conn: sqlite3.Connection | None = None,
+) -> Dict[str, Optional[str]]:
+    owns_conn = conn is None
+    conn = conn or _connect()
+    try:
+        rows = conn.execute(
+            "SELECT key, value FROM metadata WHERE key IN ({})".format(
+                ",".join("?" for _ in CVE_METADATA_KEYS)
+            ),
+            CVE_METADATA_KEYS,
+        ).fetchall()
+        values = {key: value for key, value in rows}
+        return {key: values.get(key) for key in CVE_METADATA_KEYS}
+    finally:
+        if owns_conn:
+            conn.close()
+
+
+def write_cve_metadata(
+    updates: Dict[str, Optional[str]],
+    conn: sqlite3.Connection | None = None,
+) -> None:
+    unknown = set(updates) - set(CVE_METADATA_KEYS)
+    if unknown:
+        raise ValueError(f"Unknown CVE metadata keys: {sorted(unknown)}")
+    owns_conn = conn is None
+    conn = conn or _connect()
+    try:
+        conn.executemany(
+            "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
+            list(updates.items()),
+        )
+        if owns_conn:
+            conn.commit()
+    finally:
+        if owns_conn:
+            conn.close()
+
+
+def cve_db_is_complete() -> bool:
+    if not os.path.exists(CVE_DB_PATH):
+        return False
+    return read_cve_metadata().get("coverage_mode") == "full"
+
+
+def mirror_sqlite_cursor_to_state() -> str | None:
+    if not os.path.exists(CVE_DB_PATH):
+        return None
+    cursor = read_cve_metadata().get("nvd_cursor")
+    if cursor:
+        _set_compatibility_cursor(cursor)
+    return cursor
+
+
+def prepare_sync_window(
+    conn: sqlite3.Connection,
+    *,
+    mode: str,
+    window_start: str,
+    window_end: str,
+    results_per_page: int,
+) -> int:
+    row = conn.execute(
+        "SELECT mode, window_start, window_end, results_per_page, "
+        "next_start_index, completed FROM sync_state WHERE id = 1"
+    ).fetchone()
+    signature = (mode, window_start, window_end, results_per_page)
+    if row and tuple(row[:4]) == signature and row[5] == 0:
+        return int(row[4])
+    conn.execute(
+        "INSERT OR REPLACE INTO sync_state "
+        "(id, mode, window_start, window_end, results_per_page, "
+        "next_start_index, total_expected, started_at, completed) "
+        "VALUES (1, ?, ?, ?, ?, 0, NULL, ?, 0)",
+        (mode, window_start, window_end, results_per_page, _utcnow().isoformat()),
+    )
+    conn.commit()
+    return 0
+
+
+def checkpoint_sync_page(
+    conn: sqlite3.Connection,
+    *,
+    next_start_index: int,
+    total_expected: int,
+) -> None:
+    conn.execute(SYNC_PROGRESS_SQL, (next_start_index, total_expected))
+    conn.commit()
+
+
+def complete_sync_window(conn: sqlite3.Connection) -> None:
+    conn.execute("UPDATE sync_state SET completed = 1 WHERE id = 1")
+    conn.commit()
 
 
 def cve_db_needs_update(stale_days: int = DEFAULT_STALE_DAYS) -> bool:
@@ -223,6 +361,15 @@ def cve_db_needs_update(stale_days: int = DEFAULT_STALE_DAYS) -> bool:
         if count == 0:
             return True
 
+        cursor.execute("SELECT value FROM metadata WHERE key = 'nvd_cursor'")
+        row = cursor.fetchone()
+        if row and row[0]:
+            try:
+                last_dt = datetime.fromisoformat(_normalize_nvd_timestamp(row[0]))
+            except ValueError:
+                pass
+            else:
+                return _utcnow() - last_dt > timedelta(days=stale_days)
         cursor.execute("SELECT value FROM metadata WHERE key = 'last_updated'")
         row = cursor.fetchone()
         if not row or not row[0]:
@@ -236,7 +383,7 @@ def cve_db_needs_update(stale_days: int = DEFAULT_STALE_DAYS) -> bool:
     finally:
         conn.close()
 
-    return datetime.utcnow() - last_dt > timedelta(days=stale_days)
+    return _utcnow() - last_dt > timedelta(days=stale_days)
 
 
 def describe_cve_db_local_status() -> str:
@@ -254,10 +401,9 @@ def describe_cve_db_local_status() -> str:
         conn.close()
     if count == 0:
         return "empty (0 CVEs; bootstrap required before reliable correlation)"
-    if count < MIN_PRODUCTION_CVE_COUNT:
+    if read_cve_metadata().get("coverage_mode") != "full":
         return (
-            f"partial ({count} CVEs; run update-cve-db --full or --years 15 "
-            "for complete product coverage)"
+            f"partial ({count} CVEs; run update-cve-db to install full coverage)"
         )
     if cve_db_needs_update():
         return f"stale or incomplete ({count} CVEs; refresh recommended)"
@@ -266,6 +412,7 @@ def describe_cve_db_local_status() -> str:
 
 def init_cve_database():
     """Initialize SQLite database with CVE schema."""
+    migrate_legacy_cve_database()
     os.makedirs(os.path.dirname(CVE_DB_PATH), exist_ok=True)
     
     conn = _connect()
@@ -317,6 +464,29 @@ def init_cve_database():
             value TEXT
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sync_state (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            mode TEXT NOT NULL,
+            window_start TEXT,
+            window_end TEXT,
+            results_per_page INTEGER NOT NULL,
+            next_start_index INTEGER NOT NULL,
+            total_expected INTEGER,
+            started_at TEXT NOT NULL,
+            completed INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    cursor.executemany(
+        "INSERT OR IGNORE INTO metadata (key, value) VALUES (?, ?)",
+        [
+            ("schema_version", str(CVE_SCHEMA_VERSION)),
+            ("coverage_mode", "windowed"),
+            ("coverage_start", None),
+            ("coverage_end", None),
+            ("nvd_cursor", None),
+        ],
+    )
     
     # Create indexes for performance
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_cve_severity ON cve_entries(severity)")
@@ -330,14 +500,16 @@ def init_cve_database():
     print(f"[+] CVE database initialized at {CVE_DB_PATH}")
 
 
-def update_cve_database(
+def _update_cve_database_unlocked(
     days: int = 30,
     years: Optional[int] = None,
     full_sync: bool = False,
+    raw_full_sync: bool = False,
     api_key: Optional[str] = None,
     incremental: bool = True,
     force: bool = False,
     verbose: bool = False,
+    _window: tuple[str, datetime, datetime] | None = None,
 ) -> int:
     """
     Update CVE database from NVD feeds.
@@ -376,23 +548,163 @@ def update_cve_database(
     finally:
         conn.close()
 
-    # Determine update strategy from persistent state
-    state_last_modified = get_state_timestamp("cve", "last_modified")
-    update_end = _format_nvd_datetime(datetime.utcnow())
+    # Determine update strategy from persistent state.
+    state_last_modified = read_cve_metadata().get("nvd_cursor") or get_state_timestamp(
+        "cve", "last_modified"
+    )
+    update_end = _format_nvd_datetime(_utcnow())
 
-    if full_sync:
+    if _window is None:
+        now_dt = _utcnow()
+        if full_sync and not raw_full_sync:
+            metadata = read_cve_metadata()
+            with closing(_connect()) as state_conn:
+                resume_row = state_conn.execute(
+                    "SELECT mode, window_start, window_end, completed "
+                    "FROM sync_state WHERE id = 1"
+                ).fetchone()
+            resuming_full = bool(
+                resume_row
+                and str(resume_row[0]).startswith("full-")
+                and metadata.get("coverage_mode") == "windowed"
+                and metadata.get("coverage_end")
+            )
+            if resuming_full:
+                build_started = datetime.fromisoformat(metadata["coverage_end"])
+            else:
+                build_started = now_dt
+                with closing(_connect()) as reset_conn:
+                    reset_conn.execute("DELETE FROM cve_products")
+                    reset_conn.execute("DELETE FROM cve_cpes")
+                    reset_conn.execute("DELETE FROM cve_entries")
+                    write_cve_metadata(
+                        {
+                            "coverage_mode": "windowed",
+                            "coverage_start": None,
+                            "coverage_end": _format_nvd_datetime(build_started),
+                            "nvd_cursor": None,
+                        },
+                        conn=reset_conn,
+                    )
+                    reset_conn.commit()
+            total = 0
+            history_start = datetime(1999, 1, 1)
+            resume_catchup: tuple[datetime, datetime] | None = None
+            if resuming_full and resume_row:
+                if resume_row[0] == "full-publication":
+                    history_start = datetime.fromisoformat(
+                        resume_row[2] if resume_row[3] else resume_row[1]
+                    )
+                elif resume_row[0] == "full-catchup":
+                    history_start = build_started
+                    resume_catchup = (
+                        datetime.fromisoformat(resume_row[1]),
+                        datetime.fromisoformat(resume_row[2]),
+                    )
+            for window_start, window_end in iter_nvd_windows(history_start, build_started):
+                total += _update_cve_database_unlocked(
+                    api_key=api_key,
+                    incremental=False,
+                    force=True,
+                    verbose=verbose,
+                    _window=("full-publication", window_start, window_end),
+                )
+            catchup_start, catchup_end = resume_catchup or (
+                build_started,
+                _utcnow(),
+            )
+            total += _update_cve_database_unlocked(
+                api_key=api_key,
+                incremental=True,
+                force=False,
+                verbose=verbose,
+                _window=("full-catchup", catchup_start, catchup_end),
+            )
+            completed = _format_nvd_datetime(catchup_end)
+            write_cve_metadata(
+                {
+                    "coverage_mode": "full",
+                    "coverage_start": None,
+                    "coverage_end": completed,
+                    "nvd_cursor": completed,
+                }
+            )
+            _set_compatibility_cursor(completed)
+            return total
+
+        if incremental and state_last_modified and existing_count and not force:
+            cursor_dt = datetime.fromisoformat(
+                _normalize_nvd_timestamp(state_last_modified)
+            )
+            if now_dt - cursor_dt > timedelta(days=119):
+                total = 0
+                for window_start, window_end in iter_nvd_windows(cursor_dt, now_dt):
+                    total += _update_cve_database_unlocked(
+                        api_key=api_key,
+                        incremental=True,
+                        verbose=verbose,
+                        _window=("modified", window_start, window_end),
+                    )
+                return total
+        elif not full_sync:
+            window_days = years * 365 if years is not None and years > 0 else days
+            start_dt = now_dt - timedelta(days=window_days)
+            if now_dt - start_dt > timedelta(days=119):
+                total = 0
+                for window_start, window_end in iter_nvd_windows(start_dt, now_dt):
+                    total += _update_cve_database_unlocked(
+                        api_key=api_key,
+                        incremental=False,
+                        force=True,
+                        verbose=verbose,
+                        _window=("publication", window_start, window_end),
+                    )
+                coverage_start = _format_nvd_datetime(start_dt)
+                coverage_end = _format_nvd_datetime(now_dt)
+                write_cve_metadata(
+                    {
+                        "coverage_mode": "windowed",
+                        "coverage_start": coverage_start,
+                        "coverage_end": coverage_end,
+                        "nvd_cursor": coverage_end,
+                    }
+                )
+                _set_compatibility_cursor(coverage_end)
+                return total
+
+    use_incremental = False
+    if _window is not None:
+        window_kind, window_start_dt, window_end_dt = _window
+        window_start_text = _format_nvd_datetime(window_start_dt)
+        window_end_text = _format_nvd_datetime(window_end_dt)
+        use_incremental = window_kind in {"modified", "full-catchup"}
+        if use_incremental:
+            params["lastModStartDate"] = window_start_text
+            params["lastModEndDate"] = window_end_text
+        else:
+            params["pubStartDate"] = window_start_text
+            params["pubEndDate"] = window_end_text
+    elif full_sync:
         merge_section("cve", {"last_modified": None})
         state_last_modified = None
         print("[*] Full sync requested: ignoring incremental cursor and date windows")
     elif existing_count == 0:
         merge_section("cve", {"last_modified": None})
         state_last_modified = None
+        use_incremental = False
 
-    use_incremental = (
-        incremental and state_last_modified and not force and not full_sync
-    )
+    else:
+        use_incremental = (
+            incremental
+            and state_last_modified
+            and not force
+            and not full_sync
+            and not raw_full_sync
+        )
 
-    if use_incremental:
+    if _window is not None:
+        pass
+    elif use_incremental:
         # Incremental: only fetch CVEs modified since last update
         mod_start = _normalize_nvd_timestamp(state_last_modified)
         params['lastModStartDate'] = mod_start
@@ -411,7 +723,7 @@ def update_cve_database(
                 )
             print("[*] Full NVD corpus sync (no date filter)")
         else:
-            end_date = datetime.now()
+            end_date = _utcnow()
             if years is not None and years > 0:
                 window_days = years * 365
                 label = f"{years} year(s)"
@@ -442,7 +754,9 @@ def update_cve_database(
     api_failed = False
     expected_total: Optional[int] = None
 
-    if use_incremental:
+    if _window is not None:
+        update_type = f"{_window[0]} window"
+    elif use_incremental:
         update_type = "incremental"
     elif full_sync:
         update_type = "full corpus"
@@ -452,6 +766,36 @@ def update_cve_database(
         update_type = f"last {days} days of publications"
     print(f"[*] Fetching CVEs from NVD ({update_type})...")
     print(f"[*] Timeout per request: 60s | Results per page: {params['resultsPerPage']}")
+
+    if _window is not None:
+        checkpoint_mode = _window[0]
+        checkpoint_start = (
+            params["lastModStartDate"] if use_incremental else params["pubStartDate"]
+        )
+        checkpoint_end = (
+            params["lastModEndDate"] if use_incremental else params["pubEndDate"]
+        )
+    elif use_incremental:
+        checkpoint_mode = "modified"
+        checkpoint_start = params["lastModStartDate"]
+        checkpoint_end = params["lastModEndDate"]
+    elif full_sync:
+        checkpoint_mode = "raw-full"
+        checkpoint_start = "unbounded"
+        checkpoint_end = update_end
+    else:
+        checkpoint_mode = "publication"
+        checkpoint_start = params["pubStartDate"]
+        checkpoint_end = params["pubEndDate"]
+    start_index = prepare_sync_window(
+        store_conn,
+        mode=checkpoint_mode,
+        window_start=checkpoint_start,
+        window_end=checkpoint_end,
+        results_per_page=params["resultsPerPage"],
+    )
+    if start_index:
+        print(f"[*] Resuming {checkpoint_mode} sync from startIndex={start_index}")
 
     while True:
         batch_num += 1
@@ -486,6 +830,13 @@ def update_cve_database(
 
             saw_vulnerabilities = True
             store_start = time.time()
+            total_results = int(data.get("totalResults", 0))
+            if expected_total is None:
+                expected_total = total_results
+            page_stride = int(
+                data.get("resultsPerPage") or params["resultsPerPage"]
+            )
+            next_start_index = start_index + page_stride
             # Collect CVE data for batch processing
             for vuln in vulnerabilities:
                 cve_data = vuln.get('cve', {})
@@ -500,11 +851,15 @@ def update_cve_database(
                     if verbose and len(batch_cves) % 100 == 0:
                         print(f"[VERBOSE] Collected {len(batch_cves)} CVEs in current batch")
 
-            # Batch insert every 1000 CVEs or at end
-            if len(batch_cves) >= 1000:
+            # Store and checkpoint each NVD page in one transaction.
+            if batch_cves:
                 if verbose:
                     print(f"[VERBOSE] Storing batch of {len(batch_cves)} CVEs...")
-                _store_cves_batch(batch_cves, conn=store_conn)
+                _store_cves_batch(
+                    batch_cves,
+                    conn=store_conn,
+                    checkpoint=(next_start_index, total_results),
+                )
                 total_updated += len(batch_cves)
                 if verbose:
                     print(f"[VERBOSE] Batch stored. Total updated so far: {total_updated}")
@@ -512,13 +867,7 @@ def update_cve_database(
 
             store_time = time.time() - store_start
 
-            total_results = int(data.get("totalResults", 0))
-            if expected_total is None:
-                expected_total = total_results
-            page_stride = int(
-                data.get("resultsPerPage") or params["resultsPerPage"]
-            )
-            start_index += page_stride
+            start_index = next_start_index
 
             elapsed = time.time() - overall_start_time
             rate = start_index / elapsed if elapsed > 0 else 0
@@ -548,18 +897,8 @@ def update_cve_database(
             api_failed = True
             break
 
-    # Store any remaining CVEs in the batch
-    if batch_cves:
-        if verbose:
-            print(f"[VERBOSE] Storing final batch of {len(batch_cves)} CVEs...")
-        _store_cves_batch(batch_cves, conn=store_conn)
-        total_updated += len(batch_cves)
-        if verbose:
-            print(f"[VERBOSE] Final batch stored.")
-
-    store_conn.close()
-
     if api_failed:
+        store_conn.close()
         raise RuntimeError("CVE update failed before completion; state not updated.")
 
     if (
@@ -573,6 +912,9 @@ def update_cve_database(
             f"{expected_total} CVEs. Re-run: bitsentry update-cve-db --full"
         )
 
+    complete_sync_window(store_conn)
+    store_conn.close()
+
     conn = _connect()
     cursor = conn.cursor()
     try:
@@ -580,7 +922,7 @@ def update_cve_database(
         total_in_db = cursor.fetchone()[0]
         cursor.execute(
             "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
-            ('last_updated', datetime.now().isoformat()),
+            ('last_updated', _utcnow().isoformat()),
         )
         cursor.execute(
             "INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)",
@@ -594,8 +936,8 @@ def update_cve_database(
     with open(CVE_META_PATH, "w", encoding="utf-8") as f:
         json.dump(
             {
-                "last_update": datetime.utcnow().isoformat(),
-                "updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "last_update": _utcnow().isoformat(),
+                "updated": _utcnow().strftime("%Y-%m-%d %H:%M:%S"),
                 "entry_count": total_in_db,
                 "incremental": bool(use_incremental),
             },
@@ -603,14 +945,106 @@ def update_cve_database(
             indent=2,
         )
 
-    if saw_vulnerabilities:
-        set_state_timestamp("cve", "last_modified", latest_last_modified or update_end)
+    completed_window_end = (
+        _format_nvd_datetime(_window[2]) if _window is not None else update_end
+    )
+    if use_incremental:
+        write_cve_metadata({"nvd_cursor": completed_window_end})
+        _set_compatibility_cursor(completed_window_end)
+    elif saw_vulnerabilities and not (
+        _window is not None and _window[0] == "full-publication"
+    ):
+        cursor_value = latest_last_modified or update_end
+        write_cve_metadata(
+            {
+                "nvd_cursor": cursor_value,
+                "coverage_mode": "full" if full_sync else "windowed",
+                "coverage_start": None if full_sync else params.get("pubStartDate"),
+                "coverage_end": params.get("pubEndDate", update_end),
+            }
+        )
+        _set_compatibility_cursor(cursor_value)
     
     print(
         f"[+] CVE database updated: {total_updated} CVEs added/updated "
         f"({total_in_db} total in DB)"
     )
     return total_updated
+
+
+def update_cve_database(
+    days: int = 30,
+    years: Optional[int] = None,
+    full_sync: bool = False,
+    raw_full_sync: bool = False,
+    api_key: Optional[str] = None,
+    incremental: bool = True,
+    force: bool = False,
+    verbose: bool = False,
+) -> int:
+    """Run a CVE update while holding the shared mutable-data lock."""
+    with bitsentry_update_lock():
+        if not full_sync or raw_full_sync:
+            return _update_cve_database_unlocked(
+                days=days,
+                years=years,
+                full_sync=full_sync,
+                raw_full_sync=raw_full_sync,
+                api_key=api_key,
+                incremental=incremental,
+                force=force,
+                verbose=verbose,
+            )
+
+        global CVE_DB_PATH, CVE_META_PATH, _MIRROR_COMPAT_STATE
+        destination = Path(CVE_DB_PATH)
+        staging = destination.with_name(f".{destination.name}.full-build")
+        metadata_destination = Path(CVE_META_PATH)
+        metadata_staging = metadata_destination.with_name(
+            f".{metadata_destination.name}.full-build"
+        )
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        active_path = CVE_DB_PATH
+        active_metadata_path = CVE_META_PATH
+        mirror_state = _MIRROR_COMPAT_STATE
+        try:
+            CVE_DB_PATH = str(staging)
+            CVE_META_PATH = str(metadata_staging)
+            _MIRROR_COMPAT_STATE = False
+            count = _update_cve_database_unlocked(
+                days=days,
+                years=years,
+                full_sync=True,
+                raw_full_sync=False,
+                api_key=api_key,
+                incremental=incremental,
+                force=force,
+                verbose=verbose,
+            )
+            with closing(_connect()) as conn:
+                conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                conn.execute("PRAGMA journal_mode=DELETE")
+                conn.commit()
+        finally:
+            CVE_DB_PATH = active_path
+            CVE_META_PATH = active_metadata_path
+            _MIRROR_COMPAT_STATE = mirror_state
+        if destination.exists():
+            with closing(sqlite3.connect(destination, timeout=0)) as conn:
+                conn.execute("PRAGMA busy_timeout=0")
+                busy, _, _ = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+                if busy:
+                    raise RuntimeError("current CVE database is busy")
+                conn.execute("PRAGMA journal_mode=DELETE")
+            if any(Path(f"{destination}{suffix}").exists() for suffix in ("-wal", "-shm")):
+                raise RuntimeError("current CVE database still has active WAL state")
+        os.replace(staging, destination)
+        if metadata_staging.exists():
+            os.replace(metadata_staging, metadata_destination)
+        cursor = read_cve_metadata().get("nvd_cursor")
+        if cursor:
+            set_state_timestamp("cve", "last_modified", cursor)
+        return count
 
 
 def _extract_cpe_matches_from_node(node: Dict) -> List[Dict]:
@@ -701,7 +1135,11 @@ def _extract_cve_data(cve_data: Dict) -> Optional[Dict]:
     }
 
 
-def _store_cves_batch(cve_data_list: List[Dict], conn: Optional[sqlite3.Connection] = None):
+def _store_cves_batch(
+    cve_data_list: List[Dict],
+    conn: Optional[sqlite3.Connection] = None,
+    checkpoint: tuple[int, int] | None = None,
+):
     """
     Store multiple CVEs in a single batch transaction (much faster).
 
@@ -771,6 +1209,9 @@ def _store_cves_batch(cve_data_list: List[Dict], conn: Optional[sqlite3.Connecti
                  version_start_including, version_end_including)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             """, unique_products)
+
+        if checkpoint is not None:
+            cursor.execute(SYNC_PROGRESS_SQL, checkpoint)
 
         conn.commit()
     finally:
@@ -895,12 +1336,17 @@ def get_stats() -> Dict[str, Any]:
         
         cursor.execute("SELECT value FROM metadata WHERE key = 'last_updated'")
         last_updated = cursor.fetchone()
+        metadata = read_cve_metadata(conn)
         
         return {
             'total_cves': total_cves,
             'total_products': total_products,
             'severity_counts': severity_counts,
-            'last_updated': last_updated[0] if last_updated else None
+            'last_updated': last_updated[0] if last_updated else None,
+            'coverage_mode': metadata.get('coverage_mode'),
+            'coverage_start': metadata.get('coverage_start'),
+            'coverage_end': metadata.get('coverage_end'),
+            'nvd_cursor': metadata.get('nvd_cursor'),
         }
         
     finally:

@@ -67,11 +67,10 @@ print_before_first_scan_notice() {
     echo -e "${b}  1) bitsentry update-db${r}  ${d}(ASN ok — optional refresh)${r}"
   fi
 
-  echo -e "${b}  2) export NVD_API_KEY=\"your-nvd-api-key\"${r}  ${d}(optional, faster NVD sync)${r}"
+  echo -e "${b}  2) export NVD_API_KEY=\"your-nvd-api-key\"${r}  ${d}(optional, faster incremental sync)${r}"
 
   if [[ "${CVE_NEEDS_BOOTSTRAP}" -eq 1 ]]; then
-    echo -e "${y}  3) bitsentry update-cve-db --full${r}"
-    echo -e "${b}     ${d}# or: bitsentry update-cve-db --years 15${r}"
+    echo -e "${y}  3) bitsentry update-cve-db${r}  ${d}(recommended; skipping may delay the first scan)${r}"
   else
     echo -e "${b}  3) bitsentry update-cve-db${r}  ${d}(CVE loaded — incremental refresh)${r}"
   fi
@@ -197,10 +196,10 @@ if ready:
 else:
     if tty:
         print(f'    Status: \\033[1;31m{status}\\033[0m')
-        print('    \\033[33mRun: bitsentry update-cve-db --full\\033[0m')
+        print('    \\033[33mRun: bitsentry update-cve-db\\033[0m')
     else:
         print(f'    Status: {status}')
-        print('    Run: bitsentry update-cve-db --full')
+        print('    Run: bitsentry update-cve-db')
 sys.exit(0 if ready else 1)
 "
 cve_ready_rc=$?

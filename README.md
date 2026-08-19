@@ -10,6 +10,7 @@ BitSentry is a CLI-first security assessment suite. The public build focuses on 
 - web-focused vulnerability scanning
 
 It is built to run cleanly in local shells, CI pipelines, and Docker.
+Supported hosts are Linux and macOS.
 > Use only on systems you own or are explicitly authorized to test.
 
 ## Current Product Status
@@ -54,14 +55,8 @@ Refresh local intelligence databases once so scans are useful. This is separate 
 # 1) ASN database (fast; needed for ASN/IP intel plugins)
 bitsentry update-db
 
-# 2) CVE database (choose one bootstrap — required for technology/CVE correlation)
-export NVD_API_KEY="your-nvd-api-key"   # optional but strongly recommended
-
-# Recommended: full local mirror (slow once; best coverage)
-bitsentry update-cve-db --full
-
-# Alternative: smaller first-time bootstrap (~15 years of publications)
-# bitsentry update-cve-db --years 15
+# 2) CVE database: verified snapshot, then incremental NVD catch-up
+bitsentry update-cve-db
 
 # Check what was loaded
 bitsentry cve-stats
@@ -70,14 +65,14 @@ bitsentry cve-stats
 bitsentry scan example.com
 ```
 
-**Ongoing maintenance** (after the one-time bootstrap above):
+**Ongoing maintenance:**
 
 ```bash
 bitsentry update-db              # refresh ASN data when stale
-bitsentry update-cve-db          # incremental CVE sync (fast)
+bitsentry update-cve-db          # snapshot if needed, otherwise incremental sync
 ```
 
-If you skip CVE bootstrap, the first scan may still run but will only auto-fetch a **short recent-publication window**—not enough for historical product/CVE exposure. See [CVE database](#cve-database) below for details.
+If you skip this step, the first scan uses the same snapshot bootstrap automatically. See [CVE database](#cve-database) for direct-NVD and offline fallback behavior.
 
 ### Option 2: manual setup
 
@@ -88,8 +83,7 @@ pip install -r requirements.txt
 
 # Same post-install DB steps as Option 1 (use python bitsentry.py if bitsentry is not on PATH)
 python bitsentry.py update-db
-export NVD_API_KEY="your-nvd-api-key"   # optional
-python bitsentry.py update-cve-db --full   # or: --years 15
+python bitsentry.py update-cve-db
 python bitsentry.py cve-stats
 
 # Full workflow (default): BitScope discovery -> BitProbe scan
@@ -159,48 +153,49 @@ python bitsentry.py update-db          # alias: update-asn-db
 
 ### CVE database
 
-BitProbe stores CVEs in a local SQLite database (`bitprobe/data/cve_db.sqlite`) and matches them **by detected product and version** during scans—not by “CVEs published in the last N days.”
+BitProbe stores mutable CVE data in `~/.bitsentry/data/cve_db.sqlite` and matches CVEs by detected product and version. Set `BITSENTRY_DATA_DIR` to use a different data directory.
 
 | Phase | What happens |
 |---|---|
-| **Bootstrap** | Populates the local DB (one-time or after a wipe) |
+| **Bootstrap** | Downloads and verifies the published full-corpus snapshot |
 | **Incremental sync** | Fetches only NVD records modified since the last cursor (fast) |
 | **Scan** | Fingerprints the target, then queries the DB for that product/CPE |
 
-A short publication window (for example `--days 30`) only controls **what gets downloaded into the DB**. It does not limit scan logic. For real exposure coverage, bootstrap with a full or multi-year mirror first, then rely on incremental updates.
-
-**Recommended first-time setup:**
+The default command installs a verified snapshot when the database is missing or incomplete, then fetches changes made after the snapshot cursor:
 
 ```bash
-# Optional but strongly recommended (higher NVD rate limits)
-export NVD_API_KEY="your-nvd-api-key"
-
-# One-time: build a complete local mirror (slow; ~350k CVEs)
-python bitsentry.py update-cve-db --full
-
-# Alternative: compromise bootstrap (~15 years of publications)
-python bitsentry.py update-cve-db --years 15
-
-# Ongoing refresh (incremental when a sync cursor exists)
 python bitsentry.py update-cve-db
 
-# Inspect local store
+# Install the snapshot without an incremental NVD catch-up
+python bitsentry.py update-cve-db --snapshot-only
+
+# Inspect local coverage and counts
 python bitsentry.py cve-stats
 ```
 
-**Other options:**
+Direct-NVD modes skip the snapshot. BitSentry splits long NVD date ranges into 119-day windows:
 
 ```bash
-# Quick bootstrap only (~recent publications; not sufficient alone for deep history)
+# Rebuild the complete corpus directly from NVD
+python bitsentry.py update-cve-db --full
+
+# Raw unfiltered crawl (best-effort offset resumption)
+python bitsentry.py update-cve-db --raw-full
+
+# Build partial publication-window databases
 python bitsentry.py update-cve-db --days 30
+python bitsentry.py update-cve-db --years 15
+
+# Synchronize directly without downloading a snapshot
+python bitsentry.py update-cve-db --no-snapshot
 
 # Skip automatic CVE refresh at scan startup
 export BITSENTRY_SKIP_CVE_UPDATE=1
 ```
 
-On scan startup, if the DB is empty, BitProbe may run a **7-day publication bootstrap** so the tool stays usable without blocking on a full NVD download. Run `update-cve-db --full` or `--years 15` before relying on CVE findings in production assessments.
+Set `NVD_API_KEY` for the higher NVD request limit. Interrupted windowed updates resume from the last committed page. BitSentry checksum-verifies snapshots and installs them atomically. If the snapshot is unavailable on an empty installation, it falls back to a 30-day publication database and warns that coverage is partial.
 
-Direct product commands are also available via `python bitprobe/bitprobe.py ...` (same flags: `--full`, `--years`, `--days`).
+Direct product commands are also available via `python bitprobe/bitprobe.py ...` with the same flags.
 
 ### Other maintenance
 

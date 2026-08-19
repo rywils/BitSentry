@@ -16,6 +16,7 @@ from scanner.engine import ScanEngine
 from scanner.config import ScanConfig, SCAN_PROFILES
 from scanner.asn_db_updater import update_asn_db
 from scanner.cve_db_manager import update_cve_database, get_stats
+from scanner.cve_db_bootstrap import update_with_snapshot_policy
 
 
 def cmd_scan(args) -> int:
@@ -191,8 +192,8 @@ Examples:
     cve_parser.add_argument(
         "--days",
         type=int,
-        default=30,
-        help="Publication window for bootstrap when DB is empty (default: 30)",
+        default=None,
+        help="Build a publication-window mirror directly from NVD",
     )
     cve_parser.add_argument(
         "--years",
@@ -203,7 +204,22 @@ Examples:
     cve_parser.add_argument(
         "--full",
         action="store_true",
-        help="Build full local NVD mirror (~350k CVEs; first-time setup)",
+        help="Rebuild the full local mirror directly from NVD",
+    )
+    cve_parser.add_argument(
+        "--raw-full",
+        action="store_true",
+        help="Best-effort unfiltered NVD crawl; offset resumption is not deterministic",
+    )
+    cve_parser.add_argument(
+        "--snapshot-only",
+        action="store_true",
+        help="Install the published snapshot without contacting NVD afterward",
+    )
+    cve_parser.add_argument(
+        "--no-snapshot",
+        action="store_true",
+        help="Use direct NVD synchronization without downloading a snapshot",
     )
 
     cve_stats_parser = subparsers.add_parser(
@@ -226,14 +242,31 @@ Examples:
 
     elif args.command == "update-cve-db":
         try:
-            full_sync = getattr(args, "full", False)
-            count = update_cve_database(
-                days=args.days,
-                years=getattr(args, "years", None),
-                full_sync=full_sync,
-                force=full_sync,
-                verbose=verbose,
-            )
+            raw_full = getattr(args, "raw_full", False)
+            full_sync = getattr(args, "full", False) or raw_full
+            years = getattr(args, "years", None)
+            days = getattr(args, "days", None)
+            snapshot_only = getattr(args, "snapshot_only", False)
+            direct = full_sync or years is not None or days is not None or getattr(args, "no_snapshot", False)
+            if snapshot_only and direct:
+                raise ValueError("--snapshot-only cannot be combined with direct-NVD options")
+            if direct:
+                count = update_cve_database(
+                    days=days if days is not None else 30,
+                    years=years,
+                    full_sync=full_sync,
+                    raw_full_sync=raw_full,
+                    force=full_sync,
+                    verbose=verbose,
+                )
+            else:
+                count = update_with_snapshot_policy(
+                    snapshot_only=snapshot_only,
+                    verbose=verbose,
+                )
+            if snapshot_only:
+                print("[+] CVE database snapshot installed")
+                return 0
             print(f"[+] CVE database updated with {count} entries")
             return 0
         except Exception as e:
@@ -247,6 +280,8 @@ Examples:
             print("=" * 40)
             print(f"Total CVEs: {stats.get('total_cves', 0)}")
             print(f"Total Products: {stats.get('total_products', 0)}")
+            print(f"Coverage: {stats.get('coverage_mode', 'unknown')}")
+            print(f"NVD Cursor: {stats.get('nvd_cursor', 'Never')}")
             print(f"Last Updated: {stats.get('last_updated', 'Never')}")
             print("\nBy Severity:")
             for sev, count in stats.get('severity_counts', {}).items():

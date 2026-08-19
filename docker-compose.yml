@@ -6,3 +6,8 @@ services:
     image: bitsentry:latest
     stdin_open: true
     tty: true
+    volumes:
+      - bitsentry-data:/home/bitsentry/.bitsentry
+
+volumes:
+  bitsentry-data:

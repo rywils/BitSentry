@@ -81,3 +81,6 @@ AGENTS.md
 
 # Personal AI workflow tooling -- not project convention, not for the public repo
 .claude/
+
+# Isolated feature worktrees
+.worktrees/

@@ -2,10 +2,10 @@ import json
 import os
 from pathlib import Path
 from typing import List, Dict, Any
+from scanner.paths import CVE_DB_PATH as CVE_SQLITE_PATH
 
 _DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 CVE_DB_PATH = str(_DATA_DIR / "cve_db.json")
-CVE_SQLITE_PATH = str(_DATA_DIR / "cve_db.sqlite")
 
 
 def sqlite_cve_db_available() -> bool:

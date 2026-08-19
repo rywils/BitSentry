@@ -30,9 +30,9 @@ Network scanning has a fallback chain in `bitprobe/scanner/engines/network/__ini
 
 ## Data
 
-- CVE data: `bitprobe/scanner/data/cve_db.sqlite` (primary) with `cve_db.json` as fallback/legacy (`cve_db.py`, `cve_db_manager.py`, `cve_updater.py`). Refresh via `bitprobe update-cve-db` (NVD API key recommended, see README).
+- CVE data: `~/.bitsentry/data/cve_db.sqlite` (override with `BITSENTRY_DATA_DIR`), with the source-tree database used only as a one-time legacy migration source. Refresh via `bitsentry update-cve-db`; the default path installs a verified release snapshot before incremental NVD catch-up.
 - ASN/IP intel DB: `asn_db_updater.py`, refreshed via `bitsentry update-db`.
-- Neither DB is checked into git (`bitprobe/data/cve_db.sqlite` is gitignored — a prior commit removed a large SQLite file from the repo for this reason).
+- Neither generated database is checked into git. Published CVE snapshots live in reserved `cve-db-*` GitHub Releases.
 
 ## Commands
 

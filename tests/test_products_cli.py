@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from unittest import mock
 
+import pytest
+
 import products
 from bitsentry import main as bitsentry_main
 
@@ -61,6 +63,31 @@ def test_update_cve_db_passthrough() -> None:
     assert cmd[2] == "update-cve-db"
     assert "--days" in cmd
     assert "7" in cmd
+
+
+def test_update_cve_db_default_preserves_snapshot_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    completed = mock.Mock(returncode=0)
+    run_mock = mock.Mock(return_value=completed)
+    monkeypatch.setattr("subprocess.run", run_mock)
+    monkeypatch.setattr("sys.argv", ["bitsentry", "update-cve-db"])
+    code = bitsentry_main()
+    assert code == 0
+    assert run_mock.call_args.args[0][2:] == ["update-cve-db"]
+
+
+def test_update_cve_db_snapshot_flags_are_forwarded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    completed = mock.Mock(returncode=0)
+    for flag in ("--snapshot-only", "--no-snapshot", "--raw-full"):
+        run_mock = mock.Mock(return_value=completed)
+        monkeypatch.setattr("subprocess.run", run_mock)
+        monkeypatch.setattr("sys.argv", ["bitsentry", "update-cve-db", flag])
+        code = bitsentry_main()
+        assert code == 0
+        assert flag in run_mock.call_args.args[0]
 
 
 def test_update_db_passthrough_to_asn_updater() -> None:
