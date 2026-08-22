@@ -84,3 +84,7 @@ AGENTS.md
 
 # Isolated feature worktrees
 .worktrees/
+
+# Local-only files
+CLAUDE.md
+skills-lock.json
