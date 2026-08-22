@@ -13,7 +13,6 @@ import requests
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional, Any
-from packaging import version
 from pathlib import Path
 from scanner.paths import CVE_DB_PATH, CVE_META_PATH, migrate_legacy_cve_database
 from scanner.update_lock import bitsentry_update_lock
@@ -1067,13 +1066,36 @@ def _extract_cpe_matches_from_node(node: Dict) -> List[Dict]:
         product = parts[4] if len(parts) > 4 else ''
         version_str = parts[5] if len(parts) > 5 else '*'
 
+        # Including and Excluding are mutually exclusive per NVD's schema;
+        # track which applied so an Excluding bound (that version is
+        # already patched) isn't treated as inclusive downstream.
+        version_start = match.get('versionStartIncluding')
+        version_start_including = 1
+        if version_start is None:
+            version_start = match.get('versionStartExcluding')
+            if version_start is not None:
+                version_start_including = 0
+
+        version_end = match.get('versionEndIncluding')
+        version_end_including = 1
+        if version_end is None:
+            version_end = match.get('versionEndExcluding')
+            if version_end is not None:
+                version_end_including = 0
+
+        if version_start is None and version_end is None and version_str != '*':
+            # Exact-version CPE entry (e.g. "...:1.18.0:*:*:..."): treat as
+            # an inclusive single-version range.
+            version_start = version_str
+            version_end = version_str
+
         products.append({
             'vendor': vendor.lower(),
             'product': product.lower(),
-            'version_start': match.get('versionStartIncluding', version_str if version_str != '*' else None),
-            'version_end': match.get('versionEndIncluding', version_str if version_str != '*' else None),
-            'version_start_including': 1 if match.get('versionStartIncluding') else 0,
-            'version_end_including': 1 if match.get('versionEndIncluding') else 0,
+            'version_start': version_start,
+            'version_end': version_end,
+            'version_start_including': version_start_including,
+            'version_end_including': version_end_including,
         })
 
     for child in node.get('children', []):
@@ -1235,6 +1257,12 @@ def query_cves(
     Uses PRODUCT_ALIASES from cve_matcher to resolve detected technology names
     to their known CPE product identifiers, avoiding false positives from
     substring matching (e.g., 'astro' no longer matches 'astrocam').
+
+    Version filtering is done in Python (not SQL): version_start/version_end
+    are dotted version strings, and comparing them with SQL's ">="/"<="
+    does a lexicographic string comparison, not a numeric one (e.g. the
+    string "2.4.9" sorts after "2.4.10"), which silently produces both
+    false positives and false negatives. See scanner.cve_matcher.version_in_range.
     
     Args:
         product: Product name (e.g., "nginx", "wordpress")
@@ -1247,7 +1275,7 @@ def query_cves(
     if not os.path.exists(CVE_DB_PATH):
         raise FileNotFoundError("CVE database not found. Run 'bitprobe update-cve-db' first.")
     
-    from scanner.cve_matcher import _get_cpe_names, _get_expected_vendor
+    from scanner.cve_matcher import _get_cpe_names, _get_expected_vendor, version_in_range
     
     cpe_names = _get_cpe_names(product)
     if not cpe_names:
@@ -1265,7 +1293,9 @@ def query_cves(
         query = f"""
             SELECT DISTINCT 
                 c.cve_id, c.description, c.severity, 
-                c.cvss_score, c."references", c.published_date
+                c.cvss_score, c."references", c.published_date,
+                p.version_start, p.version_end,
+                p.version_start_including, p.version_end_including
             FROM cve_entries c
             JOIN cve_products p ON c.cve_id = p.cve_id
             WHERE p.product IN ({placeholders})
@@ -1279,34 +1309,37 @@ def query_cves(
             query += " AND p.vendor = ?"
             params.append(expected_vendor)
         
-        # Version matching if provided
-        if version:
-            query += """
-                AND (
-                    (p.version_start IS NULL OR ? >= p.version_start)
-                    AND (p.version_end IS NULL OR ? <= p.version_end)
-                )
-            """
-            params.extend([version, version])
-        
         query += " ORDER BY c.cvss_score DESC NULLS LAST"
         
         cursor.execute(query, params)
         rows = cursor.fetchall()
         
-        cves = []
+        cves = {}
         for row in rows:
-            cve = {
-                'cve_id': row['cve_id'],
+            cve_id = row['cve_id']
+            if cve_id in cves:
+                # Already matched via a different product/version row for
+                # this CVE; each row is an independent vulnerable
+                # configuration, so one match is enough.
+                continue
+            if version and not version_in_range(
+                version,
+                row['version_start'],
+                row['version_end'],
+                min_inclusive=bool(row['version_start_including']),
+                max_inclusive=bool(row['version_end_including']),
+            ):
+                continue
+            cves[cve_id] = {
+                'cve_id': cve_id,
                 'description': row['description'],
                 'severity': row['severity'],
                 'cvss_score': row['cvss_score'],
                 'published_date': row['published_date'],
                 'references': json.loads(row['references'] or '[]')
             }
-            cves.append(cve)
         
-        return cves
+        return list(cves.values())
         
     finally:
         conn.close()

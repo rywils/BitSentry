@@ -2,9 +2,11 @@
 Enhanced CVE Matching with CPE parsing and semantic versioning.
 """
 
+from __future__ import annotations
+
 import re
 from typing import Dict, List, Optional, Tuple
-from packaging import version as pkg_version
+from packaging.version import InvalidVersion, Version
 
 
 def parse_cpe(cpe_string: str) -> Optional[Dict]:
@@ -126,37 +128,82 @@ def parse_version_range(cpe: Dict) -> Tuple[Optional[str], Optional[str]]:
     return (version, version)
 
 
-def version_in_range(detected: str, min_ver: Optional[str], max_ver: Optional[str]) -> bool:
-    """Check if detected version falls within the range."""
+def _coerce_version(value: str) -> Optional[Version]:
+    """
+    Parse a version string leniently.
+
+    Real-world banner/package versions are frequently not valid PEP 440
+    (e.g. Debian/Ubuntu suffixes like "2.4.41-1ubuntu1" or
+    "5.7.31-0ubuntu0.18.04.1"), which Version() rejects outright. Fall
+    back to the leading dotted-numeric prefix so those versions can
+    still be compared; return None only if no numeric version can be
+    recovered at all.
+    """
+    try:
+        return Version(value)
+    except InvalidVersion:
+        pass
+    match = re.match(r"[0-9]+(?:\.[0-9]+)*", value)
+    if not match:
+        return None
+    try:
+        return Version(match.group(0))
+    except InvalidVersion:
+        return None
+
+
+def version_in_range(
+    detected: Optional[str],
+    min_ver: Optional[str],
+    max_ver: Optional[str],
+    min_inclusive: bool = True,
+    max_inclusive: bool = True,
+) -> bool:
+    """Check if detected version falls within [min_ver, max_ver].
+
+    min_inclusive/max_inclusive control whether each bound is inclusive
+    (versionStartIncluding/versionEndIncluding in NVD terms) or exclusive
+    (versionStartExcluding/versionEndExcluding).
+    """
     if not detected:
         # No version detected - can't determine vulnerability
         # Only match if CVE affects all versions (no version constraints)
         return min_ver is None and max_ver is None
-    
-    try:
-        detected_v = pkg_version.parse(detected)
-        
-        if min_ver and max_ver:
-            # Specific version or range
-            if min_ver == max_ver:
-                return detected_v == pkg_version.parse(min_ver)
-            return pkg_version.parse(min_ver) <= detected_v <= pkg_version.parse(max_ver)
-        
-        elif min_ver:
-            return detected_v >= pkg_version.parse(min_ver)
-        
-        elif max_ver:
-            return detected_v <= pkg_version.parse(max_ver)
-        
-        else:
-            # No version constraints - any version matches
-            return True
-            
-    except Exception:
-        # Fallback to string comparison
-        if min_ver and max_ver and min_ver == max_ver:
-            return detected == min_ver
+
+    if min_ver is None and max_ver is None:
         return True
+
+    detected_v = _coerce_version(detected)
+    if detected_v is None:
+        # Can't parse the detected version at all - don't claim a match
+        # against a bounded range; that would flood results with false
+        # positives for every technology we can't version-compare.
+        return False
+
+    if min_ver is not None:
+        min_v = _coerce_version(min_ver)
+        if min_v is None:
+            # A bound is declared but unparseable - don't silently treat
+            # it as unbounded (that would let out-of-range versions
+            # through); decline the match instead.
+            return False
+        if min_inclusive:
+            if detected_v < min_v:
+                return False
+        elif detected_v <= min_v:
+            return False
+
+    if max_ver is not None:
+        max_v = _coerce_version(max_ver)
+        if max_v is None:
+            return False
+        if max_inclusive:
+            if detected_v > max_v:
+                return False
+        elif detected_v >= max_v:
+            return False
+
+    return True
 
 
 def extract_cve_info(cve_entry: Dict) -> List[Dict]:
@@ -180,21 +227,35 @@ def extract_cve_info(cve_entry: Dict) -> List[Dict]:
                 if not cpe:
                     continue
                 
-                # Check for version range in versionEndExcluding/versionEndIncluding
-                version_start = match.get("versionStartIncluding")
-                version_end = match.get("versionEndExcluding") or match.get("versionEndIncluding")
-                
-                if version_start or version_end:
-                    min_ver = version_start
-                    max_ver = version_end
-                else:
+                # Check for version range in versionStart/EndIncluding/Excluding.
+                # Including and Excluding are mutually exclusive per NVD's
+                # schema; track which one applied so callers can honor the
+                # correct boundary (an Excluding bound means that version
+                # itself is already patched).
+                min_ver = match.get("versionStartIncluding")
+                min_inclusive = True
+                if min_ver is None:
+                    min_ver = match.get("versionStartExcluding")
+                    min_inclusive = False
+
+                max_ver = match.get("versionEndIncluding")
+                max_inclusive = True
+                if max_ver is None:
+                    max_ver = match.get("versionEndExcluding")
+                    max_inclusive = False
+
+                if min_ver is None and max_ver is None:
                     min_ver, max_ver = parse_version_range(cpe)
+                    min_inclusive = True
+                    max_inclusive = True
                 
                 products.append({
                     "vendor": cpe.get("vendor", ""),
                     "product": cpe.get("product", ""),
                     "min_version": min_ver,
                     "max_version": max_ver,
+                    "min_inclusive": min_inclusive,
+                    "max_inclusive": max_inclusive,
                     "version": cpe.get("version"),
                 })
     
@@ -211,7 +272,13 @@ def match_technology_to_cve(tech_name: str, tech_version: Optional[str], cve_ent
     for product in affected_products:
         if product_names_match(tech_name, product["product"]):
             # Product matches, check version
-            if version_in_range(tech_version, product["min_version"], product["max_version"]):
+            if version_in_range(
+                tech_version,
+                product["min_version"],
+                product["max_version"],
+                min_inclusive=product.get("min_inclusive", True),
+                max_inclusive=product.get("max_inclusive", True),
+            ):
                 return {
                     "matched_product": product["product"],
                     "detected_version": tech_version,
