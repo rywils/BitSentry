@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 _BITPROBE = Path(__file__).resolve().parents[1] / "bitprobe"
 if str(_BITPROBE) not in sys.path:
     sys.path.insert(0, str(_BITPROBE))
@@ -124,7 +126,12 @@ def test_extract_cpe_matches_captures_excluding_bounds() -> None:
     assert product["version_end_including"] == 0
 
 
-def _query_cves_db(tmp_path: Path, monkeypatch, products: list[dict], cve_id="CVE-2024-00001"):
+def _query_cves_db(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    products: list[dict],
+    cve_id: str = "CVE-2024-00001",
+) -> Path:
     db_path = tmp_path / "cve.sqlite"
     monkeypatch.setattr(cve_db_manager, "CVE_DB_PATH", str(db_path))
     init_cve_database()

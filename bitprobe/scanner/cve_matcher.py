@@ -2,9 +2,11 @@
 Enhanced CVE Matching with CPE parsing and semantic versioning.
 """
 
+from __future__ import annotations
+
 import re
 from typing import Dict, List, Optional, Tuple
-from packaging import version as pkg_version
+from packaging.version import InvalidVersion, Version
 
 
 def parse_cpe(cpe_string: str) -> Optional[Dict]:
@@ -126,32 +128,32 @@ def parse_version_range(cpe: Dict) -> Tuple[Optional[str], Optional[str]]:
     return (version, version)
 
 
-def _coerce_version(value: str):
+def _coerce_version(value: str) -> Optional[Version]:
     """
     Parse a version string leniently.
 
     Real-world banner/package versions are frequently not valid PEP 440
     (e.g. Debian/Ubuntu suffixes like "2.4.41-1ubuntu1" or
-    "5.7.31-0ubuntu0.18.04.1"), which packaging.version.parse rejects
-    outright. Fall back to the leading dotted-numeric prefix so those
-    versions can still be compared; return None only if no numeric
-    version can be recovered at all.
+    "5.7.31-0ubuntu0.18.04.1"), which Version() rejects outright. Fall
+    back to the leading dotted-numeric prefix so those versions can
+    still be compared; return None only if no numeric version can be
+    recovered at all.
     """
     try:
-        return pkg_version.parse(value)
-    except Exception:
+        return Version(value)
+    except InvalidVersion:
         pass
     match = re.match(r"[0-9]+(?:\.[0-9]+)*", value)
     if not match:
         return None
     try:
-        return pkg_version.parse(match.group(0))
-    except Exception:
+        return Version(match.group(0))
+    except InvalidVersion:
         return None
 
 
 def version_in_range(
-    detected: str,
+    detected: Optional[str],
     min_ver: Optional[str],
     max_ver: Optional[str],
     min_inclusive: bool = True,
@@ -180,21 +182,26 @@ def version_in_range(
 
     if min_ver is not None:
         min_v = _coerce_version(min_ver)
-        if min_v is not None:
-            if min_inclusive:
-                if detected_v < min_v:
-                    return False
-            elif detected_v <= min_v:
+        if min_v is None:
+            # A bound is declared but unparseable - don't silently treat
+            # it as unbounded (that would let out-of-range versions
+            # through); decline the match instead.
+            return False
+        if min_inclusive:
+            if detected_v < min_v:
                 return False
+        elif detected_v <= min_v:
+            return False
 
     if max_ver is not None:
         max_v = _coerce_version(max_ver)
-        if max_v is not None:
-            if max_inclusive:
-                if detected_v > max_v:
-                    return False
-            elif detected_v >= max_v:
+        if max_v is None:
+            return False
+        if max_inclusive:
+            if detected_v > max_v:
                 return False
+        elif detected_v >= max_v:
+            return False
 
     return True
 

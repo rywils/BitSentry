@@ -26,6 +26,18 @@ def test_version_in_range_respects_exclusive_bounds() -> None:
     assert version_in_range("2.4.49", "2.4.0", "2.4.50", max_inclusive=False) is True
     assert version_in_range("2.4.50", "2.4.0", "2.4.50", max_inclusive=False) is False
     assert version_in_range("2.4.50", "2.4.0", "2.4.50", max_inclusive=True) is True
+    # Same check on the lower bound: versionStartExcluding means the
+    # boundary version itself is NOT affected, only versions after it.
+    assert version_in_range("2.4.0", "2.4.0", "2.4.50", min_inclusive=False) is False
+    assert version_in_range("2.4.1", "2.4.0", "2.4.50", min_inclusive=False) is True
+
+
+def test_version_in_range_unparseable_bound_declines_match() -> None:
+    # A declared bound that can't be parsed at all must not be silently
+    # treated as unbounded - that would let versions outside the real
+    # (but malformed) range through as false positives.
+    assert version_in_range("2.4.9", "not-a-version", "2.4.10") is False
+    assert version_in_range("2.4.9", "2.4.0", "not-a-version") is False
 
 
 def test_version_in_range_tolerates_distro_suffixed_versions() -> None:
