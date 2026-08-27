@@ -5,6 +5,9 @@ CVE Database Manager
 Manages SQLite database for CVE tracking with NVD feed integration.
 """
 
+import csv
+import gzip
+import io
 import sqlite3
 import json
 import os
@@ -19,6 +22,8 @@ from scanner.update_lock import bitsentry_update_lock
 from scanner.update_state import get_state_timestamp, set_state_timestamp, merge_section
 
 NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+KEV_FEED_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+EPSS_BULK_URL = "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz"
 DEFAULT_STALE_DAYS = 7
 # NVD rate limits (https://nvd.nist.gov/developers/start-here): 5 req/30s
 # without a key (6.0s spacing), 50 req/30s with one (0.6s spacing, +margin).
@@ -409,6 +414,27 @@ def describe_cve_db_local_status() -> str:
     return f"ok ({count} CVEs loaded)"
 
 
+def _ensure_enrichment_columns(cursor: sqlite3.Cursor) -> None:
+    """
+    Add KEV/EPSS columns to cve_entries if they're missing.
+
+    `CREATE TABLE IF NOT EXISTS` is a no-op against a database that was
+    built before these columns existed, so databases installed from an
+    older cve-db-* release snapshot need them added in place rather than
+    requiring a full rebuild.
+    """
+    existing = {row[1] for row in cursor.execute("PRAGMA table_info(cve_entries)")}
+    additions = {
+        "kev": "BOOLEAN DEFAULT 0",
+        "kev_date_added": "TEXT",
+        "epss_score": "REAL",
+        "epss_percentile": "REAL",
+    }
+    for column, ddl in additions.items():
+        if column not in existing:
+            cursor.execute(f"ALTER TABLE cve_entries ADD COLUMN {column} {ddl}")
+
+
 def init_cve_database():
     """Initialize SQLite database with CVE schema."""
     migrate_legacy_cve_database()
@@ -427,10 +453,15 @@ def init_cve_database():
             cvss_vector TEXT,
             published_date TEXT,
             last_modified TEXT,
-            "references" TEXT
+            "references" TEXT,
+            kev BOOLEAN DEFAULT 0,
+            kev_date_added TEXT,
+            epss_score REAL,
+            epss_percentile REAL
         )
     """)
-    
+    _ensure_enrichment_columns(cursor)
+
     # Product mappings for version matching
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS cve_products (
@@ -1046,6 +1077,109 @@ def update_cve_database(
         return count
 
 
+def update_kev_data(verbose: bool = False) -> int:
+    """
+    Flag CVEs already in the local database that CISA's Known Exploited
+    Vulnerabilities catalog lists as actively exploited in the wild.
+
+    Only updates existing rows — a KEV entry for a CVE our local NVD data
+    doesn't have yet is skipped rather than inserted as a stub, since we
+    have no description/CVSS/CPE data for it.
+    """
+    init_cve_database()
+    response = requests.get(KEV_FEED_URL, timeout=60)
+    response.raise_for_status()
+    vulnerabilities = response.json().get("vulnerabilities", [])
+
+    rows = [
+        (vuln.get("dateAdded"), vuln["cveID"])
+        for vuln in vulnerabilities
+        if vuln.get("cveID")
+    ]
+    if verbose:
+        print(f"[VERBOSE] Parsed {len(rows)} entries from CISA KEV catalog")
+
+    conn = _connect()
+    try:
+        cursor = conn.cursor()
+        # Clear stale flags first so a CVE CISA later removes from the
+        # catalog doesn't stay marked forever.
+        cursor.execute("UPDATE cve_entries SET kev = 0, kev_date_added = NULL WHERE kev = 1")
+        cursor.executemany(
+            "UPDATE cve_entries SET kev = 1, kev_date_added = ? WHERE cve_id = ?",
+            rows,
+        )
+        updated = max(cursor.rowcount, 0)
+        conn.commit()
+    finally:
+        conn.close()
+
+    print(f"[+] CISA KEV flag set for {updated} known CVEs")
+    return updated
+
+
+def update_epss_data(verbose: bool = False) -> int:
+    """
+    Refresh FIRST EPSS (Exploit Prediction Scoring System) scores for CVEs
+    already in the local database, from FIRST's daily bulk export.
+
+    Only updates existing rows, same reasoning as update_kev_data: EPSS
+    scores for CVEs we don't have NVD data for yet aren't useful without
+    the rest of the record.
+    """
+    init_cve_database()
+    response = requests.get(EPSS_BULK_URL, timeout=60)
+    response.raise_for_status()
+    raw = gzip.decompress(response.content).decode("utf-8")
+
+    rows = []
+    for row in csv.reader(io.StringIO(raw)):
+        if not row or row[0].startswith("#") or row[0] == "cve" or len(row) < 3:
+            continue
+        cve_id, score, percentile = row[0], row[1], row[2]
+        try:
+            rows.append((float(score), float(percentile), cve_id))
+        except ValueError:
+            continue
+    if verbose:
+        print(f"[VERBOSE] Parsed {len(rows)} EPSS scores from bulk export")
+
+    conn = _connect()
+    try:
+        cursor = conn.cursor()
+        cursor.executemany(
+            "UPDATE cve_entries SET epss_score = ?, epss_percentile = ? WHERE cve_id = ?",
+            rows,
+        )
+        updated = max(cursor.rowcount, 0)
+        conn.commit()
+    finally:
+        conn.close()
+
+    print(f"[+] EPSS score updated for {updated} known CVEs")
+    return updated
+
+
+def update_kev_epss(verbose: bool = False) -> Dict[str, int]:
+    """
+    Refresh both CISA KEV and FIRST EPSS enrichment. Each source is
+    independent of the other and of the core NVD sync, so a failure in
+    one (e.g. a feed being temporarily unreachable) doesn't block the
+    other or the primary CVE update.
+    """
+    kev_updated = 0
+    epss_updated = 0
+    try:
+        kev_updated = update_kev_data(verbose=verbose)
+    except Exception as e:
+        print(f"[!] CISA KEV update failed: {e}")
+    try:
+        epss_updated = update_epss_data(verbose=verbose)
+    except Exception as e:
+        print(f"[!] FIRST EPSS update failed: {e}")
+    return {"kev_updated": kev_updated, "epss_updated": epss_updated}
+
+
 def _extract_cpe_matches_from_node(node: Dict) -> List[Dict]:
     """
     Extract product entries from one NVD configuration node, recursing into
@@ -1291,9 +1425,10 @@ def query_cves(
         # Map cpe_names to their expected vendor strings for filtering
         placeholders = ','.join('?' * len(cpe_names))
         query = f"""
-            SELECT DISTINCT 
-                c.cve_id, c.description, c.severity, 
+            SELECT DISTINCT
+                c.cve_id, c.description, c.severity,
                 c.cvss_score, c."references", c.published_date,
+                c.kev, c.kev_date_added, c.epss_score, c.epss_percentile,
                 p.version_start, p.version_end,
                 p.version_start_including, p.version_end_including
             FROM cve_entries c
@@ -1317,12 +1452,13 @@ def query_cves(
         cves = {}
         for row in rows:
             cve_id = row['cve_id']
-            if cve_id in cves:
-                # Already matched via a different product/version row for
-                # this CVE; each row is an independent vulnerable
-                # configuration, so one match is enough.
-                continue
-            if version and not version_in_range(
+            # version_in_range already handles version=None correctly (it
+            # only matches rows with no version bounds at all); previously
+            # this was guarded by `if version and ...`, which skipped the
+            # range check entirely when no version was detected and let an
+            # unversioned fingerprint match every bounded CVE for that
+            # product, not just the unbounded ones.
+            if not version_in_range(
                 version,
                 row['version_start'],
                 row['version_end'],
@@ -1330,15 +1466,37 @@ def query_cves(
                 max_inclusive=bool(row['version_end_including']),
             ):
                 continue
+            # "confirmed" means an actual detected version was checked
+            # against a real bounded range; "low" means either no version
+            # was detected, or the CVE record itself carries no version
+            # bound (so it was matched purely on product name).
+            confidence = (
+                'confirmed'
+                if version and (row['version_start'] or row['version_end'])
+                else 'low'
+            )
+            if cve_id in cves:
+                # Already matched via a different product/version row for
+                # this CVE; each row is an independent vulnerable
+                # configuration, so one match is enough, but prefer to
+                # surface the more confident of the two if both occur.
+                if confidence == 'confirmed':
+                    cves[cve_id]['confidence'] = 'confirmed'
+                continue
             cves[cve_id] = {
                 'cve_id': cve_id,
                 'description': row['description'],
                 'severity': row['severity'],
                 'cvss_score': row['cvss_score'],
                 'published_date': row['published_date'],
-                'references': json.loads(row['references'] or '[]')
+                'references': json.loads(row['references'] or '[]'),
+                'confidence': confidence,
+                'kev': bool(row['kev']),
+                'kev_date_added': row['kev_date_added'],
+                'epss_score': row['epss_score'],
+                'epss_percentile': row['epss_percentile'],
             }
-        
+
         return list(cves.values())
         
     finally:
@@ -1370,7 +1528,13 @@ def get_stats() -> Dict[str, Any]:
         cursor.execute("SELECT value FROM metadata WHERE key = 'last_updated'")
         last_updated = cursor.fetchone()
         metadata = read_cve_metadata(conn)
-        
+
+        cursor.execute("SELECT COUNT(*) FROM cve_entries WHERE kev = 1")
+        kev_count = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM cve_entries WHERE epss_score IS NOT NULL")
+        epss_count = cursor.fetchone()[0]
+
         return {
             'total_cves': total_cves,
             'total_products': total_products,
@@ -1380,6 +1544,8 @@ def get_stats() -> Dict[str, Any]:
             'coverage_start': metadata.get('coverage_start'),
             'coverage_end': metadata.get('coverage_end'),
             'nvd_cursor': metadata.get('nvd_cursor'),
+            'kev_count': kev_count,
+            'epss_count': epss_count,
         }
         
     finally:

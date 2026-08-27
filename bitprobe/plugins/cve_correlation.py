@@ -199,6 +199,40 @@ class CVECorrelationPlugin(BasePlugin):
     ) -> None:
         guidance = self._generate_contextual_guidance(tech_name, cve_id)
         refs = references or []
+        confidence = match.get("confidence", "low")
+        kev = bool(match.get("kev"))
+        kev_date_added = match.get("kev_date_added")
+        epss_score = match.get("epss_score")
+        epss_percentile = match.get("epss_percentile")
+
+        # CISA KEV means this CVE is confirmed exploited in the wild right
+        # now — that outweighs a CVSS-bucket severity computed in the
+        # abstract, so it overrides rather than just adding to it.
+        if kev:
+            severity = "critical"
+
+        remediation = (
+            f"Upgrade {tech_name} to a patched version. "
+            "See CVE details for specific fixed versions."
+        )
+        if kev:
+            remediation = (
+                "CISA's Known Exploited Vulnerabilities catalog lists this CVE as "
+                "actively exploited in the wild"
+                + (f" (added {kev_date_added})" if kev_date_added else "")
+                + f". Treat as critical and patch {tech_name} immediately, "
+                "regardless of match confidence below. "
+            ) + remediation
+        if confidence != "confirmed":
+            remediation += (
+                " Confidence: low — this was matched on product name without a "
+                "version-range check (either no version was fingerprinted, or the "
+                "CVE record itself carries no version bound), so verify manually "
+                "before treating it as a confirmed finding. Note that vendor-patched "
+                "or distro-packaged builds can carry a backported fix while still "
+                "reporting an older upstream version string."
+            )
+
         findings.append(
             Finding(
                 plugin_name=self.get_name(),
@@ -212,12 +246,14 @@ class CVECorrelationPlugin(BasePlugin):
                     "cve_id": cve_id,
                     "cvss_score": cvss,
                     "affected_versions": match.get("affected_versions", ""),
+                    "confidence": confidence,
+                    "kev": kev,
+                    "kev_date_added": kev_date_added,
+                    "epss_score": epss_score,
+                    "epss_percentile": epss_percentile,
                     "references": refs[:3],
                 },
-                remediation=(
-                    f"Upgrade {tech_name} to a patched version. "
-                    "See CVE details for specific fixed versions."
-                ),
+                remediation=remediation,
                 attack_scenario=guidance["attack"],
                 defense_strategy=guidance["defense"],
                 mitigation_plan=guidance["mitigation"],
@@ -292,6 +328,11 @@ class CVECorrelationPlugin(BasePlugin):
                         "matched_product": tech_name,
                         "detected_version": tech_version,
                         "affected_versions": "see NVD advisory",
+                        "confidence": cve_row.get("confidence", "low"),
+                        "kev": cve_row.get("kev", False),
+                        "kev_date_added": cve_row.get("kev_date_added"),
+                        "epss_score": cve_row.get("epss_score"),
+                        "epss_percentile": cve_row.get("epss_percentile"),
                     }
                     self._append_cve_finding(
                         findings,
