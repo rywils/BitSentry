@@ -65,26 +65,3 @@ private/
 bitprobe/.git/
 bitprobe/data/cve_db.sqlite
 
-# Spartan AI config (contains API keys)
-.spartan/ai.env
-
-#Other
-SKILL.md
-AGENTS.md
-
-# Spartan local planning/memory state -- not for the public repo
-.planning/
-.memory/
-
-# Local OpenCode config
-.opencode/
-
-# Personal AI workflow tooling -- not project convention, not for the public repo
-.claude/
-
-# Isolated feature worktrees
-.worktrees/
-
-# Local-only files
-CLAUDE.md
-skills-lock.json

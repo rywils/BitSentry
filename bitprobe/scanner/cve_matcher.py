@@ -279,10 +279,20 @@ def match_technology_to_cve(tech_name: str, tech_version: Optional[str], cve_ent
                 min_inclusive=product.get("min_inclusive", True),
                 max_inclusive=product.get("max_inclusive", True),
             ):
+                # "confirmed" means a detected version was checked against
+                # an actual bounded range; "low" means either no version
+                # was detected, or the CVE record has no version bound at
+                # all (matched on product name alone).
+                confidence = (
+                    "confirmed"
+                    if tech_version and (product["min_version"] or product["max_version"])
+                    else "low"
+                )
                 return {
                     "matched_product": product["product"],
                     "detected_version": tech_version,
                     "affected_versions": f"{product['min_version'] or 'any'} - {product['max_version'] or 'any'}",
+                    "confidence": confidence,
                 }
     
     return None

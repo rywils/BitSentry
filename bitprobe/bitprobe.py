@@ -15,7 +15,7 @@ import sys
 from scanner.engine import ScanEngine
 from scanner.config import ScanConfig, SCAN_PROFILES
 from scanner.asn_db_updater import update_asn_db
-from scanner.cve_db_manager import update_cve_database, get_stats
+from scanner.cve_db_manager import update_cve_database, update_kev_epss, get_stats
 from scanner.cve_db_bootstrap import update_with_snapshot_policy
 
 
@@ -221,6 +221,16 @@ Examples:
         action="store_true",
         help="Use direct NVD synchronization without downloading a snapshot",
     )
+    cve_parser.add_argument(
+        "--kev-epss-only",
+        action="store_true",
+        help="Only refresh CISA KEV / FIRST EPSS enrichment, skip the NVD sync",
+    )
+    cve_parser.add_argument(
+        "--skip-kev-epss",
+        action="store_true",
+        help="Skip CISA KEV / FIRST EPSS enrichment during this update",
+    )
 
     cve_stats_parser = subparsers.add_parser(
         "cve-stats",
@@ -247,9 +257,24 @@ Examples:
             years = getattr(args, "years", None)
             days = getattr(args, "days", None)
             snapshot_only = getattr(args, "snapshot_only", False)
+            kev_epss_only = getattr(args, "kev_epss_only", False)
+            skip_kev_epss = getattr(args, "skip_kev_epss", False)
             direct = full_sync or years is not None or days is not None or getattr(args, "no_snapshot", False)
             if snapshot_only and direct:
                 raise ValueError("--snapshot-only cannot be combined with direct-NVD options")
+            if kev_epss_only and skip_kev_epss:
+                raise ValueError("--kev-epss-only cannot be combined with --skip-kev-epss")
+            if kev_epss_only and (direct or snapshot_only):
+                raise ValueError("--kev-epss-only cannot be combined with NVD sync options")
+
+            if kev_epss_only:
+                counts = update_kev_epss(verbose=verbose)
+                print(
+                    f"[+] KEV/EPSS enrichment updated: "
+                    f"{counts['kev_updated']} KEV, {counts['epss_updated']} EPSS"
+                )
+                return 0
+
             if direct:
                 count = update_cve_database(
                     days=days if days is not None else 30,
@@ -267,6 +292,12 @@ Examples:
             if snapshot_only:
                 print("[+] CVE database snapshot installed")
                 return 0
+            if not skip_kev_epss:
+                counts = update_kev_epss(verbose=verbose)
+                print(
+                    f"[+] KEV/EPSS enrichment updated: "
+                    f"{counts['kev_updated']} KEV, {counts['epss_updated']} EPSS"
+                )
             print(f"[+] CVE database updated with {count} entries")
             return 0
         except Exception as e:
@@ -283,6 +314,8 @@ Examples:
             print(f"Coverage: {stats.get('coverage_mode', 'unknown')}")
             print(f"NVD Cursor: {stats.get('nvd_cursor', 'Never')}")
             print(f"Last Updated: {stats.get('last_updated', 'Never')}")
+            print(f"CISA KEV flagged: {stats.get('kev_count', 0)}")
+            print(f"EPSS scored: {stats.get('epss_count', 0)}")
             print("\nBy Severity:")
             for sev, count in stats.get('severity_counts', {}).items():
                 print(f"  {sev.upper()}: {count}")

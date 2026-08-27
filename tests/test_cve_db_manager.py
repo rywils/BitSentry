@@ -9,6 +9,8 @@ _BITPROBE = Path(__file__).resolve().parents[1] / "bitprobe"
 if str(_BITPROBE) not in sys.path:
     sys.path.insert(0, str(_BITPROBE))
 
+import gzip
+
 import scanner.cve_db_manager as cve_db_manager
 from scanner.cve_db_manager import (
     NVD_SLEEP_NO_KEY,
@@ -18,7 +20,23 @@ from scanner.cve_db_manager import (
     _nvd_inter_request_sleep,
     init_cve_database,
     query_cves,
+    update_epss_data,
+    update_kev_data,
 )
+
+
+class _FakeResponse:
+    def __init__(self, *, json_data=None, content: bytes = b"", status_code: int = 200) -> None:
+        self._json_data = json_data
+        self.content = content
+        self.status_code = status_code
+
+    def json(self):
+        return self._json_data
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise cve_db_manager.requests.HTTPError(f"HTTP {self.status_code}")
 
 
 def _cpe_match(criteria: str, vulnerable: bool = True) -> dict:
@@ -199,3 +217,174 @@ def test_query_cves_respects_exclusive_upper_bound(monkeypatch, tmp_path: Path) 
     )
     assert query_cves("apache", version="2.4.49") != []
     assert query_cves("apache", version="2.4.50") == []
+
+
+def test_update_kev_data_flags_known_cve(monkeypatch, tmp_path: Path) -> None:
+    db_path = tmp_path / "cve.sqlite"
+    monkeypatch.setattr(cve_db_manager, "CVE_DB_PATH", str(db_path))
+    init_cve_database()
+    conn = cve_db_manager._connect()
+    try:
+        conn.execute(
+            "INSERT INTO cve_entries (cve_id, description, severity, cvss_score, \"references\") "
+            "VALUES ('CVE-2024-00001', 'desc', 'high', 7.5, '[]')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    kev_payload = {
+        "vulnerabilities": [
+            {"cveID": "CVE-2024-00001", "dateAdded": "2024-02-01"},
+            # A KEV entry for a CVE our local NVD data doesn't have yet
+            # should be skipped, not inserted as a stub row.
+            {"cveID": "CVE-2024-99999", "dateAdded": "2024-02-01"},
+        ]
+    }
+    monkeypatch.setattr(
+        cve_db_manager.requests,
+        "get",
+        lambda url, timeout=60: _FakeResponse(json_data=kev_payload),
+    )
+
+    updated = update_kev_data()
+    assert updated == 1
+
+    conn = cve_db_manager._connect()
+    try:
+        row = conn.execute(
+            "SELECT kev, kev_date_added FROM cve_entries WHERE cve_id = 'CVE-2024-00001'"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row == (1, "2024-02-01")
+
+
+def test_update_kev_data_clears_stale_flags(monkeypatch, tmp_path: Path) -> None:
+    db_path = tmp_path / "cve.sqlite"
+    monkeypatch.setattr(cve_db_manager, "CVE_DB_PATH", str(db_path))
+    init_cve_database()
+    conn = cve_db_manager._connect()
+    try:
+        conn.execute(
+            "INSERT INTO cve_entries (cve_id, description, severity, cvss_score, \"references\", kev, kev_date_added) "
+            "VALUES ('CVE-2024-00001', 'desc', 'high', 7.5, '[]', 1, '2023-01-01')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    monkeypatch.setattr(
+        cve_db_manager.requests,
+        "get",
+        lambda url, timeout=60: _FakeResponse(json_data={"vulnerabilities": []}),
+    )
+
+    update_kev_data()
+
+    conn = cve_db_manager._connect()
+    try:
+        row = conn.execute(
+            "SELECT kev, kev_date_added FROM cve_entries WHERE cve_id = 'CVE-2024-00001'"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row == (0, None)
+
+
+def test_update_epss_data_updates_known_cve_only(monkeypatch, tmp_path: Path) -> None:
+    db_path = tmp_path / "cve.sqlite"
+    monkeypatch.setattr(cve_db_manager, "CVE_DB_PATH", str(db_path))
+    init_cve_database()
+    conn = cve_db_manager._connect()
+    try:
+        conn.execute(
+            "INSERT INTO cve_entries (cve_id, description, severity, cvss_score, \"references\") "
+            "VALUES ('CVE-2024-00001', 'desc', 'high', 7.5, '[]')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    csv_body = (
+        "#model_version:v2023.03.01,score_date:2024-01-01T00:00:00+0000\n"
+        "cve,epss,percentile\n"
+        "CVE-2024-00001,0.42,0.91\n"
+        # A CVE we have no local record for is simply not applied.
+        "CVE-2024-99999,0.10,0.20\n"
+    )
+    monkeypatch.setattr(
+        cve_db_manager.requests,
+        "get",
+        lambda url, timeout=60: _FakeResponse(content=gzip.compress(csv_body.encode("utf-8"))),
+    )
+
+    updated = update_epss_data()
+    assert updated == 1
+
+    conn = cve_db_manager._connect()
+    try:
+        row = conn.execute(
+            "SELECT epss_score, epss_percentile FROM cve_entries WHERE cve_id = 'CVE-2024-00001'"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row == (0.42, 0.91)
+
+
+def test_query_cves_surfaces_kev_and_epss(monkeypatch, tmp_path: Path) -> None:
+    db_path = _query_cves_db(
+        tmp_path,
+        monkeypatch,
+        [{"version_start": "2.4.2", "version_end": "2.4.10"}],
+    )
+    conn = cve_db_manager._connect()
+    try:
+        conn.execute(
+            "UPDATE cve_entries SET kev = 1, kev_date_added = '2024-02-01', "
+            "epss_score = 0.9, epss_percentile = 0.99 WHERE cve_id = 'CVE-2024-00001'"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    matches = query_cves("apache", version="2.4.9")
+    assert len(matches) == 1
+    assert matches[0]["kev"] is True
+    assert matches[0]["kev_date_added"] == "2024-02-01"
+    assert matches[0]["epss_score"] == 0.9
+    assert matches[0]["epss_percentile"] == 0.99
+
+
+def test_ensure_enrichment_columns_migrates_pre_existing_db(monkeypatch, tmp_path: Path) -> None:
+    # Simulate a database built before the kev/epss columns existed.
+    db_path = tmp_path / "cve.sqlite"
+    monkeypatch.setattr(cve_db_manager, "CVE_DB_PATH", str(db_path))
+    conn = cve_db_manager._connect()
+    try:
+        conn.execute(
+            """
+            CREATE TABLE cve_entries (
+                cve_id TEXT PRIMARY KEY,
+                description TEXT NOT NULL,
+                severity TEXT,
+                cvss_score REAL,
+                cvss_vector TEXT,
+                published_date TEXT,
+                last_modified TEXT,
+                "references" TEXT
+            )
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    init_cve_database()
+
+    conn = cve_db_manager._connect()
+    try:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(cve_entries)")}
+    finally:
+        conn.close()
+    assert {"kev", "kev_date_added", "epss_score", "epss_percentile"} <= columns
