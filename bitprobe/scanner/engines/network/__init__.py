@@ -30,10 +30,19 @@ GO_BINARY = GO_SOURCE.parent / "network_scanner"
 
 
 def _get_rust_binary() -> Optional[Path]:
-    """Get path to compiled Rust binary if it exists."""
-    if RUST_BINARY.exists():
-        return RUST_BINARY
-    return None
+    """Get the Rust binary when it can run on this host."""
+    if not RUST_BINARY.is_file():
+        return None
+    try:
+        result = subprocess.run(
+            [str(RUST_BINARY), "--version"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return RUST_BINARY if result.returncode == 0 else None
 
 
 def _get_go_binary() -> Optional[Path]:

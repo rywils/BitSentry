@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import Dict, Iterable, List
-import os
 import sys
 from pathlib import Path
 
@@ -64,28 +63,27 @@ class Reporter:
         ).resolve()
         resolved_output_dir.mkdir(parents=True, exist_ok=True)
 
-        print("[DEBUG] CWD:", os.getcwd())
-        print("[DEBUG] OUTPUT_DIR:", resolved_output_dir)
-
         artifacts: List[str] = []
+        failures: List[str] = []
         for fmt in cls.ALLOWED_FORMATS:
-            if fmt in normalized:
-                writer = cls.WRITERS[fmt]
-                try:
-                    artifact = Path(
-                        writer(report, str(resolved_output_dir), output_name)
-                    ).resolve()
-                    assert artifact.exists(), f"Failed to write {artifact}"
-                    print(f"[+] Report written -> {artifact}")
-                    artifacts.append(str(artifact))
-                except Exception as e:
-                    print(f"[!] Failed to write {fmt.upper()} output: {e}", file=sys.stderr)
-                    raise RuntimeError(f"{fmt.upper()} report generation failed: {e}") from e
+            if fmt not in normalized:
+                continue
+            writer = cls.WRITERS[fmt]
+            try:
+                artifact = Path(
+                    writer(report, str(resolved_output_dir), output_name)
+                ).resolve()
+                if not artifact.exists():
+                    raise RuntimeError(f"Failed to write {artifact}")
+                print(f"[+] Report written -> {artifact}")
+                artifacts.append(str(artifact))
+            except Exception as e:
+                message = f"{fmt.upper()} report generation failed: {e}"
+                failures.append(message)
+                print(f"[!] {message}", file=sys.stderr)
 
-        if not artifacts:
-            raise RuntimeError(
-                "No report artifacts were generated. "
-                "Check requested `--format` and dependencies."
-            )
-
-        return artifacts
+        if artifacts:
+            return artifacts
+        raise RuntimeError(
+            "; ".join(failures) or "No report artifacts were generated"
+        )

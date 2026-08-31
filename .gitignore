@@ -1,5 +1,6 @@
 # Documentation 
 old_docs/
+.worktrees/
 docusaurus/
 stitch_export
 REPORTS/
