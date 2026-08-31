@@ -40,11 +40,23 @@ def _parameter_values(pairs):
     return values
 
 
+def _control_disabled(control):
+    if control.has_attr("disabled"):
+        return True
+    for fieldset in control.find_parents("fieldset"):
+        if not fieldset.has_attr("disabled"):
+            continue
+        first_legend = fieldset.find("legend", recursive=False)
+        if first_legend is None or first_legend not in control.parents:
+            return True
+    return False
+
+
 def _form_values(form) -> Dict:
     values = {}
     for control in form.find_all(["input", "select", "textarea"]):
         name = control.get("name")
-        if not name or control.has_attr("disabled"):
+        if not name or _control_disabled(control):
             continue
         if control.name == "input":
             control_type = control.get("type", "text").lower()
@@ -63,8 +75,18 @@ def _form_values(form) -> Dict:
         elif control.name == "textarea":
             value = control.get_text()
         else:
-            option = control.find("option", selected=True) or control.find("option")
-            value = option.get("value", option.get_text()) if option else ""
+            options = control.find_all("option", selected=True)
+            if not options and not control.has_attr("multiple"):
+                option = control.find("option")
+                options = [option] if option else []
+            for option in options:
+                optgroup = option.find_parent("optgroup")
+                if option.has_attr("disabled") or (
+                    optgroup is not None and optgroup.has_attr("disabled")
+                ):
+                    continue
+                _add_value(values, name, option.get("value", option.get_text()))
+            continue
         _add_value(values, name, value)
     return values
 

@@ -69,18 +69,28 @@ def test_discovers_query_parameters_and_same_origin_get_forms():
 def test_get_forms_submit_only_successful_controls_and_keep_repeated_values():
     html = """
     <form action="/filter" method="get">
-      <input type="checkbox" name="delete" value="1">
+      <fieldset disabled>
+        <input name="delete" value="1">
+      </fieldset>
       <input type="radio" name="scope" value="private">
       <input type="radio" name="scope" value="public" checked>
       <input type="checkbox" name="tag" value="one" checked>
       <input type="checkbox" name="tag" value="two" checked>
+      <select name="region" multiple>
+        <option value="us" selected>US</option>
+        <option value="eu" selected>EU</option>
+      </select>
     </form>
     """
 
     assert discover_get_targets("https://example.test/", html) == [
         (
             "https://example.test/filter",
-            {"scope": "public", "tag": ["one", "two"]},
+            {
+                "scope": "public",
+                "tag": ["one", "two"],
+                "region": ["us", "eu"],
+            },
         )
     ]
 
