@@ -34,6 +34,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def _pending_plugin_status(pending, future_to_task, now=None) -> str:
+    now = time.monotonic() if now is None else now
+    names = sorted({future_to_task[future][0].get_name() for future in pending})
+    oldest = min(future_to_task[future][2] for future in pending)
+    return f"{', '.join(names)} ({int(now - oldest)}s elapsed)"
+
+
 class ColoredConsole:
     """Wrapper for console output with optional color support."""
     
@@ -315,7 +323,7 @@ class ScanEngine:
             for url_info in urls:
                 for plugin in self.plugins:
                     future = executor.submit(self._safe_plugin_scan, plugin, url_info)
-                    future_to_task[future] = (plugin, url_info)
+                    future_to_task[future] = (plugin, url_info, time.monotonic())
             
             pending = set(future_to_task.keys())
             while pending:
@@ -326,9 +334,8 @@ class ScanEngine:
                 )
 
                 if not done:
-                    self.console.wait_hint(
-                        "Please wait... still processing long-running plugin checks."
-                    )
+                    status = _pending_plugin_status(pending, future_to_task)
+                    self.console.wait_hint(f"Still running: {status}")
                     self.console.info(
                         f"Progress: {completed_tasks}/{total_tasks} tasks complete "
                         f"({len(pending)} still running)"
@@ -336,7 +343,7 @@ class ScanEngine:
                     continue
 
                 for future in done:
-                    plugin, url_info = future_to_task[future]
+                    plugin, url_info, _ = future_to_task[future]
                     completed_tasks += 1
 
                     try:
