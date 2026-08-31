@@ -2,6 +2,7 @@ from scanner.config import ScanConfig
 from scanner.request_handler import RequestHandler
 from scanner.crawler import Crawler
 from scanner.analysis.attack_chain_engine import build_attack_chains
+from scanner.analysis.findings import group_findings
 from scanner.analysis.prioritization import prioritize_findings
 from scanner.reporting.reporter import Reporter
 
@@ -237,6 +238,7 @@ class ScanEngine:
             "fingerprinting": "plugins.fingerprinting.FingerprintingPlugin",
             "security_headers": "plugins.security_headers.SecurityHeadersPlugin",
             "sensitive_files": "plugins.sensitive_files.SensitiveFilesPlugin",
+            "web_vulnerabilities": "plugins.web_vulnerabilities.WebVulnerabilitiesPlugin",
             "cve_correlation": "plugins.cve_correlation.CVECorrelationPlugin",
             "network_scanner": "plugins.network_scanner.NetworkScannerPlugin",
             "tls_analysis": "plugins.tls_analysis.TLSAnalysisPlugin",
@@ -412,7 +414,7 @@ class ScanEngine:
 
     def _generate_report(self, duration: float, attack_chains: List[Dict]) -> Dict:
         raw_findings = [f.to_dict() for f in self.findings]
-        prioritized = prioritize_findings(raw_findings)
+        prioritized = prioritize_findings(group_findings(raw_findings))
         all_findings = prioritized["findings"]
 
         # Separate edge infrastructure from actual vulnerabilities

@@ -12,41 +12,43 @@ import (
 	"os"
 	"runtime"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
 
 // ScanResult represents a single port scan result
 type ScanResult struct {
-	Port      int       `json:"port"`
-	Protocol  string    `json:"protocol"`
-	State     string    `json:"state"`     // open, closed, filtered
-	Service   string    `json:"service"`
-	Banner    string    `json:"banner,omitempty"`
+	Port         int     `json:"port"`
+	Protocol     string  `json:"protocol"`
+	State        string  `json:"state"` // open, closed, filtered
+	Service      string  `json:"service"`
+	Banner       string  `json:"banner,omitempty"`
 	ResponseTime float64 `json:"response_time_ms"`
 }
 
 // ScanConfig holds scanning parameters
 type ScanConfig struct {
-	Target       string   `json:"target"`
-	Ports        []int    `json:"ports"`
-	ScanType     string   `json:"scan_type"`     // connect, syn, udp
-	Timeout      int      `json:"timeout_ms"`
-	Concurrency  int      `json:"concurrency"`
-	GrabBanners  bool     `json:"grab_banners"`
+	Target      string `json:"target"`
+	Ports       []int  `json:"ports"`
+	ScanType    string `json:"scan_type"` // connect, syn, udp
+	Timeout     int    `json:"timeout_ms"`
+	Concurrency int    `json:"concurrency"`
+	GrabBanners bool   `json:"grab_banners"`
 }
 
 // ScanOutput is the final JSON output
 type ScanOutput struct {
-	Target      string       `json:"target"`
-	ScanType    string       `json:"scan_type"`
-	StartTime   string       `json:"start_time"`
-	EndTime     string       `json:"end_time"`
-	Duration    float64      `json:"duration_ms"`
-	TotalPorts  int          `json:"total_ports_scanned"`
-	OpenCount   int          `json:"open_count"`
-	Results     []ScanResult `json:"results"`
-	Errors      []string     `json:"errors,omitempty"`
+	Target     string       `json:"target"`
+	ScanType   string       `json:"scan_type"`
+	StartTime  string       `json:"start_time"`
+	EndTime    string       `json:"end_time"`
+	Duration   float64      `json:"duration_ms"`
+	TotalPorts int          `json:"total_ports_scanned"`
+	OpenCount  int          `json:"open_count"`
+	Results    []ScanResult `json:"results"`
+	Errors     []string     `json:"errors,omitempty"`
 }
 
 // Common service mappings
@@ -80,19 +82,43 @@ var commonServices = map[int]string{
 
 // Parse port ranges like "80,443,8000-8100"
 func parsePorts(portSpec string) []int {
-	var ports []int
-	
-	// Predefined port groups
 	if portSpec == "top100" {
 		return getTop100Ports()
 	}
 	if portSpec == "top1000" {
 		return getTop1000Ports()
 	}
-	
-	// TODO: Parse actual ranges like "80,443,8000-8100"
-	// For now, return top 100
-	return getTop100Ports()
+
+	unique := make(map[int]struct{})
+	for _, item := range strings.Split(portSpec, ",") {
+		parts := strings.SplitN(strings.TrimSpace(item), "-", 2)
+		start, err := strconv.Atoi(parts[0])
+		if err != nil {
+			continue
+		}
+		end := start
+		if len(parts) == 2 {
+			end, err = strconv.Atoi(parts[1])
+			if err != nil {
+				continue
+			}
+		}
+		if start < 1 || end > 65535 || start > end {
+			continue
+		}
+		for port := start; port <= end; port++ {
+			unique[port] = struct{}{}
+		}
+	}
+	if len(unique) == 0 {
+		return getTop100Ports()
+	}
+	ports := make([]int, 0, len(unique))
+	for port := range unique {
+		ports = append(ports, port)
+	}
+	sort.Ints(ports)
+	return ports
 }
 
 func getTop100Ports() []int {
@@ -137,10 +163,10 @@ func TCPConnectScan(target string, port int, timeout time.Duration) ScanResult {
 		State:    "closed",
 		Service:  commonServices[port],
 	}
-	
+
 	address := fmt.Sprintf("%s:%d", target, port)
 	conn, err := net.DialTimeout("tcp", address, timeout)
-	
+
 	if err != nil {
 		// Check if filtered (timeout vs refused)
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
@@ -149,11 +175,11 @@ func TCPConnectScan(target string, port int, timeout time.Duration) ScanResult {
 		result.ResponseTime = float64(time.Since(start).Milliseconds())
 		return result
 	}
-	
+
 	defer conn.Close()
 	result.State = "open"
 	result.ResponseTime = float64(time.Since(start).Milliseconds())
-	
+
 	return result
 }
 
@@ -165,10 +191,10 @@ func GrabBanner(target string, port int, timeout time.Duration) string {
 		return ""
 	}
 	defer conn.Close()
-	
+
 	// Set read timeout
 	conn.SetReadDeadline(time.Now().Add(timeout))
-	
+
 	// Try to read banner
 	buf := make([]byte, 1024)
 	n, err := conn.Read(buf)
@@ -182,7 +208,7 @@ func GrabBanner(target string, port int, timeout time.Duration) string {
 			return ""
 		}
 	}
-	
+
 	// Clean up banner (limit length, remove non-printable)
 	banner := string(buf[:n])
 	if len(banner) > 200 {
@@ -202,10 +228,10 @@ func worker(
 	wg *sync.WaitGroup,
 ) {
 	defer wg.Done()
-	
+
 	for port := range jobs {
 		var result ScanResult
-		
+
 		switch scanType {
 		case "connect":
 			result = TCPConnectScan(target, port, timeout)
@@ -218,12 +244,12 @@ func worker(
 		default:
 			result = TCPConnectScan(target, port, timeout)
 		}
-		
+
 		// Grab banner for open ports
 		if grabBanners && result.State == "open" {
 			result.Banner = GrabBanner(target, port, timeout)
 		}
-		
+
 		results <- result
 	}
 }
@@ -237,7 +263,7 @@ func UDPScan(target string, port int, timeout time.Duration) ScanResult {
 		State:    "open|filtered", // UDP is stateless
 		Service:  commonServices[port],
 	}
-	
+
 	address := fmt.Sprintf("%s:%d", target, port)
 	conn, err := net.DialTimeout("udp", address, timeout)
 	if err != nil {
@@ -245,16 +271,16 @@ func UDPScan(target string, port int, timeout time.Duration) ScanResult {
 		return result
 	}
 	defer conn.Close()
-	
+
 	// Send UDP packet
 	conn.SetWriteDeadline(time.Now().Add(timeout))
 	conn.Write([]byte("\n"))
-	
+
 	// Try to read response
 	conn.SetReadDeadline(time.Now().Add(timeout))
 	buf := make([]byte, 1024)
 	n, err := conn.Read(buf)
-	
+
 	if err != nil {
 		// ICMP unreachable would mean closed, but we can't easily detect that
 		result.State = "open|filtered"
@@ -262,7 +288,7 @@ func UDPScan(target string, port int, timeout time.Duration) ScanResult {
 		result.State = "open"
 		result.Banner = string(buf[:min(n, 200)])
 	}
-	
+
 	result.ResponseTime = float64(time.Since(start).Milliseconds())
 	return result
 }
@@ -277,35 +303,35 @@ func min(a, b int) int {
 // RunScan executes the full scan with worker pool
 func RunScan(config ScanConfig) ScanOutput {
 	startTime := time.Now()
-	
+
 	output := ScanOutput{
 		Target:     config.Target,
 		ScanType:   config.ScanType,
 		StartTime:  startTime.Format(time.RFC3339),
 		TotalPorts: len(config.Ports),
 	}
-	
+
 	timeout := time.Duration(config.Timeout) * time.Millisecond
 	if timeout == 0 {
 		timeout = 2 * time.Second
 	}
-	
+
 	concurrency := config.Concurrency
 	if concurrency == 0 {
 		concurrency = runtime.NumCPU() * 10
 	}
-	
+
 	// Create channels
 	jobs := make(chan int, len(config.Ports))
 	results := make(chan ScanResult, len(config.Ports))
-	
+
 	// Start workers
 	var wg sync.WaitGroup
 	for i := 0; i < concurrency; i++ {
 		wg.Add(1)
 		go worker(jobs, results, config.Target, config.ScanType, timeout, config.GrabBanners, &wg)
 	}
-	
+
 	// Send jobs
 	go func() {
 		for _, port := range config.Ports {
@@ -313,13 +339,13 @@ func RunScan(config ScanConfig) ScanOutput {
 		}
 		close(jobs)
 	}()
-	
+
 	// Close results when workers done
 	go func() {
 		wg.Wait()
 		close(results)
 	}()
-	
+
 	// Collect results
 	for result := range results {
 		if result.State == "open" || result.State == "open|filtered" {
@@ -329,16 +355,16 @@ func RunScan(config ScanConfig) ScanOutput {
 			}
 		}
 	}
-	
+
 	// Sort results by port number
 	sort.Slice(output.Results, func(i, j int) bool {
 		return output.Results[i].Port < output.Results[j].Port
 	})
-	
+
 	endTime := time.Now()
 	output.EndTime = endTime.Format(time.RFC3339)
 	output.Duration = float64(endTime.Sub(startTime).Milliseconds())
-	
+
 	return output
 }
 
@@ -353,13 +379,13 @@ func main() {
 		jsonOutput  = flag.Bool("json", true, "Output JSON")
 	)
 	flag.Parse()
-	
+
 	if *target == "" {
 		fmt.Fprintln(os.Stderr, "Error: target required")
 		flag.Usage()
 		os.Exit(1)
 	}
-	
+
 	config := ScanConfig{
 		Target:      *target,
 		Ports:       parsePorts(*ports),
@@ -368,9 +394,9 @@ func main() {
 		Concurrency: *concurrency,
 		GrabBanners: *banners,
 	}
-	
+
 	output := RunScan(config)
-	
+
 	if *jsonOutput {
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")

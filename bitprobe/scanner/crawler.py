@@ -91,13 +91,15 @@ class Crawler:
             parsed = urlparse(url)
             params = parse_qs(parsed.query)
 
-            self.urls_to_scan.append({
+            url_info = {
                 'url': url,
                 'params': params,
-                'depth': depth
-            })
+                'depth': depth,
+            }
+            self.urls_to_scan.append(url_info)
 
             response = request_handler.get(url)
+            url_info['response'] = response
             if response is not None and response.status_code == 200:
                 content_type = response.headers.get('Content-Type', '')
                 if self.verbose:

@@ -37,3 +37,13 @@ def test_native_scanner_honors_explicit_port_string():
 
 def test_native_scanner_resolves_ranges_and_deduplicates():
     assert native.resolve_ports("80,443,8000-8002,443") == [80, 443, 8000, 8001, 8002]
+
+
+def test_network_scanner_accepts_null_engine_results(monkeypatch):
+    monkeypatch.setattr(
+        network,
+        "scan_target",
+        lambda **_kwargs: {"results": None},
+    )
+
+    assert network.NetworkScanner().scan("127.0.0.1") == []
