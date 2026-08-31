@@ -33,10 +33,10 @@ class Handler:
         return self.responder(params)
 
 
-def scan(parameter, responder, page_html="<html></html>"):
+def scan(parameter, responder, page_html="<html></html>", value="safe"):
     handler = Handler(responder, page_html)
     findings = WebVulnerabilitiesPlugin().scan(
-        {"url": f"https://example.test/search?{parameter}=safe", "depth": 0},
+        {"url": f"https://example.test/search?{parameter}={value}", "depth": 0},
         handler,
     )
     return findings, handler
@@ -66,6 +66,25 @@ def test_discovers_query_parameters_and_same_origin_get_forms():
     ]
 
 
+def test_get_forms_submit_only_successful_controls_and_keep_repeated_values():
+    html = """
+    <form action="/filter" method="get">
+      <input type="checkbox" name="delete" value="1">
+      <input type="radio" name="scope" value="private">
+      <input type="radio" name="scope" value="public" checked>
+      <input type="checkbox" name="tag" value="one" checked>
+      <input type="checkbox" name="tag" value="two" checked>
+    </form>
+    """
+
+    assert discover_get_targets("https://example.test/", html) == [
+        (
+            "https://example.test/filter",
+            {"scope": "public", "tag": ["one", "two"]},
+        )
+    ]
+
+
 def test_detects_reflected_xss_only_when_payload_becomes_markup():
     def responder(params):
         value = params["q"]
@@ -89,17 +108,28 @@ def test_escaped_reflection_is_not_reported_as_xss():
     assert all("XSS" not in finding.title for finding in findings)
 
 
-def test_detects_new_sql_error_signature():
+def test_non_html_reflection_is_not_reported_as_xss():
+    def responder(params):
+        value = params["q"]
+        return response(value, headers={"Content-Type": "application/json"})
+
+    findings, _ = scan("q", responder)
+
+    assert all("XSS" not in finding.title for finding in findings)
+
+
+def test_detects_new_sql_error_signature_without_leaking_original_value():
     def responder(params):
         if params["id"].endswith("'"):
             return response("You have an error in your SQL syntax")
         return response("record 7")
 
-    findings, _ = scan("id", responder)
+    findings, _ = scan("id", responder, value="secret-token")
 
     assert [finding.title for finding in findings] == [
         "SQL Injection Error in parameter 'id'"
     ]
+    assert "secret-token" not in findings[0].evidence["payload"]
 
 
 def test_existing_sql_error_is_not_reported():

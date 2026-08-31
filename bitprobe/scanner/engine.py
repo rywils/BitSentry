@@ -384,11 +384,12 @@ class ScanEngine:
 
         duration = time.time() - start_time
 
+        grouped_findings = group_findings([f.to_dict() for f in self.findings])
         self.console.info("Building attack chains...")
-        attack_chains = build_attack_chains(self.findings)
-        
+        attack_chains = build_attack_chains(grouped_findings)
+
         self.console.info("Generating report...")
-        report = self._generate_report(duration, attack_chains)
+        report = self._generate_report(duration, attack_chains, grouped_findings)
         output_name = self.config.output_name or self._default_output_name()
         
         try:
@@ -412,9 +413,15 @@ class ScanEngine:
 
         return report
 
-    def _generate_report(self, duration: float, attack_chains: List[Dict]) -> Dict:
-        raw_findings = [f.to_dict() for f in self.findings]
-        prioritized = prioritize_findings(group_findings(raw_findings))
+    def _generate_report(
+        self,
+        duration: float,
+        attack_chains: List[Dict],
+        grouped_findings: List[Dict] | None = None,
+    ) -> Dict:
+        if grouped_findings is None:
+            grouped_findings = group_findings([f.to_dict() for f in self.findings])
+        prioritized = prioritize_findings(grouped_findings)
         all_findings = prioritized["findings"]
 
         # Separate edge infrastructure from actual vulnerabilities

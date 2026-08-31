@@ -1,4 +1,5 @@
 from plugins.base_plugin import Finding
+from scanner.analysis.attack_chain_engine import build_attack_chains
 from scanner.analysis.findings import group_findings
 from scanner.config import ScanConfig
 from scanner.engine import ScanEngine
@@ -85,3 +86,25 @@ def test_report_counts_and_scores_grouped_vulnerability_once():
     assert report["statistics"]["findings_by_severity"]["medium"] == 1
     assert report["statistics"]["risk"]["raw_score"] == 20
     assert report["findings"][0]["endpoint_count"] == 2
+
+
+def test_attack_chains_reference_grouped_findings():
+    grouped = group_findings(
+        [
+            finding("Known vulnerable software", "high", "https://example.test/z"),
+            finding("Known vulnerable software", "high", "https://example.test/a"),
+        ]
+    )
+
+    chains = build_attack_chains(grouped)
+
+    related = next(
+        chain["related_findings"]
+        for chain in chains
+        if chain["id"] == "chain_cve_exploit"
+    )
+    assert len(related) == 1
+    assert related[0]["affected_endpoints"] == [
+        "https://example.test/a",
+        "https://example.test/z",
+    ]

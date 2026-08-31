@@ -23,14 +23,32 @@ SQL_ERRORS = [
 MAX_PARAMETERS = 6
 
 
-def _form_values(form) -> Dict[str, str]:
+def _add_value(values, name, value):
+    current = values.get(name)
+    if current is None:
+        values[name] = value
+    elif isinstance(current, list):
+        current.append(value)
+    else:
+        values[name] = [current, value]
+
+
+def _parameter_values(pairs):
+    values = {}
+    for name, value in pairs:
+        _add_value(values, name, value)
+    return values
+
+
+def _form_values(form) -> Dict:
     values = {}
     for control in form.find_all(["input", "select", "textarea"]):
         name = control.get("name")
         if not name or control.has_attr("disabled"):
             continue
         if control.name == "input":
-            if control.get("type", "text").lower() in {
+            control_type = control.get("type", "text").lower()
+            if control_type in {
                 "submit",
                 "button",
                 "file",
@@ -39,20 +57,23 @@ def _form_values(form) -> Dict[str, str]:
                 "image",
             }:
                 continue
-            values[name] = control.get("value", "")
+            if control_type in {"checkbox", "radio"} and not control.has_attr("checked"):
+                continue
+            value = control.get("value", "")
         elif control.name == "textarea":
-            values[name] = control.get_text()
+            value = control.get_text()
         else:
             option = control.find("option", selected=True) or control.find("option")
-            values[name] = option.get("value", option.get_text()) if option else ""
+            value = option.get("value", option.get_text()) if option else ""
+        _add_value(values, name, value)
     return values
 
 
-def discover_get_targets(url: str, html: str) -> List[tuple[str, Dict[str, str]]]:
+def discover_get_targets(url: str, html: str) -> List[tuple[str, Dict]]:
     parsed = urlparse(url)
     origin = (parsed.scheme.lower(), parsed.netloc.lower())
     targets = []
-    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query = _parameter_values(parse_qsl(parsed.query, keep_blank_values=True))
     if query:
         endpoint = urlunparse(parsed._replace(query="", fragment=""))
         targets.append((endpoint, query))
@@ -65,7 +86,9 @@ def discover_get_targets(url: str, html: str) -> List[tuple[str, Dict[str, str]]
         action_parsed = urlparse(action)
         if (action_parsed.scheme.lower(), action_parsed.netloc.lower()) != origin:
             continue
-        values = dict(parse_qsl(action_parsed.query, keep_blank_values=True))
+        values = _parameter_values(
+            parse_qsl(action_parsed.query, keep_blank_values=True)
+        )
         values.update(_form_values(form))
         if not values:
             continue
@@ -88,7 +111,17 @@ class WebVulnerabilitiesPlugin(BasePlugin):
         mutated[parameter] = payload
         return handler.get(endpoint, params=mutated, allow_redirects=False)
 
-    def _finding(self, title, severity, endpoint, parameter, payload, reason, response):
+    def _finding(
+        self,
+        title,
+        severity,
+        endpoint,
+        parameter,
+        payload,
+        reason,
+        response,
+        evidence_payload=None,
+    ):
         return Finding(
             plugin_name=self.get_name(),
             severity=severity,
@@ -98,7 +131,7 @@ class WebVulnerabilitiesPlugin(BasePlugin):
             evidence={
                 "method": "GET",
                 "parameter": parameter,
-                "payload": payload,
+                "payload": evidence_payload or payload,
                 "status_code": response.status_code,
                 "reason": reason[:500],
             },
@@ -148,7 +181,11 @@ class WebVulnerabilitiesPlugin(BasePlugin):
                     parameter,
                     xss_payload,
                 )
-                if probe is not None and token not in baseline_text:
+                if (
+                    probe is not None
+                    and "text/html" in probe.headers.get("Content-Type", "").lower()
+                    and token not in baseline_text
+                ):
                     tag = BeautifulSoup(probe.text, "html.parser").find(
                         "bitsentry-probe",
                         attrs={"data-token": token},
@@ -166,7 +203,8 @@ class WebVulnerabilitiesPlugin(BasePlugin):
                             )
                         )
 
-                sql_payload = f"{original}'"
+                original_value = original[0] if isinstance(original, list) else original
+                sql_payload = f"{original_value}'"
                 probe = self._probe(
                     request_handler,
                     endpoint,
@@ -190,6 +228,7 @@ class WebVulnerabilitiesPlugin(BasePlugin):
                                 sql_payload,
                                 f"New database error signature: {new_errors[0]}",
                                 probe,
+                                evidence_payload="[original value] + single quote",
                             )
                         )
 

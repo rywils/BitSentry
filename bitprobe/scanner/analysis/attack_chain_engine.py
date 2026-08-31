@@ -15,10 +15,13 @@ def build_attack_chains(findings: List) -> List[Dict]:
         matched_findings = []
 
         for finding in findings:
-            text = (finding.title + " " + finding.description).lower()
+            finding_data = finding if isinstance(finding, dict) else finding.to_dict()
+            text = (
+                finding_data["title"] + " " + finding_data["description"]
+            ).lower()
 
             if any(keyword.lower() in text for keyword in chain["indicator_keywords"]):
-                matched_findings.append(finding)
+                matched_findings.append(finding_data)
 
         if matched_findings:
             results.append({
@@ -26,7 +29,7 @@ def build_attack_chains(findings: List) -> List[Dict]:
                 "title": chain["title"],
                 "kill_chain_stage": chain["kill_chain_stage"],
                 "business_impact": chain["business_impact"],
-                "related_findings": [f.to_dict() for f in matched_findings]
+                "related_findings": matched_findings
             })
 
     return results

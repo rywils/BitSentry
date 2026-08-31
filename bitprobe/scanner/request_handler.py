@@ -12,6 +12,7 @@ Features:
 import requests
 import time
 import random
+import threading
 from urllib.parse import urljoin, urlparse
 from typing import Dict, Optional, Tuple
 from requests.adapters import HTTPAdapter
@@ -61,6 +62,7 @@ class RequestHandler:
         self.verify_ssl = verify_ssl
         self.verbose = verbose
         self.last_request_time = 0
+        self._rate_limit_lock = threading.Lock()
         
         # Create session with connection pooling
         self.session = requests.Session()
@@ -134,18 +136,17 @@ class RequestHandler:
     
     def _respect_rate_limit(self):
         """Implement rate limiting with jitter."""
-        if self.rate_limit > 0:
-            time_since_last = time.time() - self.last_request_time
-            min_interval = 1.0 / self.rate_limit
-            
-            # Add small random jitter (±10%) to avoid thundering herd
-            jitter = min_interval * 0.1 * (2 * random.random() - 1)
-            min_interval_with_jitter = min_interval + jitter
-            
-            if time_since_last < min_interval_with_jitter:
-                time.sleep(min_interval_with_jitter - time_since_last)
-        
-        self.last_request_time = time.time()
+        with self._rate_limit_lock:
+            if self.rate_limit > 0:
+                time_since_last = time.time() - self.last_request_time
+                min_interval = 1.0 / self.rate_limit
+                jitter = min_interval * 0.1 * (2 * random.random() - 1)
+                min_interval_with_jitter = min_interval + jitter
+
+                if time_since_last < min_interval_with_jitter:
+                    time.sleep(min_interval_with_jitter - time_since_last)
+
+            self.last_request_time = time.time()
     
     def _make_request(
         self,
