@@ -20,10 +20,11 @@ This repository contains the **public demonstration** of BitProbe. The full scan
 - Security header analysis
 - Sensitive file and misconfiguration detection
 - CVE correlation using a local vulnerability database
+- Safe GET-based checks for reflected XSS, SQL errors, path traversal, and open redirects
+- Grouped, severity-ordered findings with affected endpoint lists
 - Automated attack-chain correlation
-- Client-ready structured output (JSON)
-- Transparent risk scoring per finding
-- Non-intrusive scanning only
+- Client-ready JSON, Markdown, HTML, and PDF output
+- Transparent risk scoring per grouped finding
 
 ---
 
@@ -39,8 +40,8 @@ python3 bitprobe.py \
 
 ## Security Notice
 
-This repository does NOT contain exploit code or active offensive tooling.
-It is intended for defensive security testing, portfolio demonstration, and educational research only.
+Active checks use bounded, read-only GET requests and do not submit POST forms or follow external redirects.
+Run scans only against systems you own or have explicit permission to test.
 
 ## License
 

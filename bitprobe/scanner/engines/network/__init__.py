@@ -266,7 +266,7 @@ class NetworkScanner:
                 "banner": r.get("banner", ""),
                 "response_time_ms": r.get("response_time_ms", 0),
             }
-            for r in result.get("results", [])
+            for r in result.get("results") or []
             if r.get("state") == "open"
         ]
     

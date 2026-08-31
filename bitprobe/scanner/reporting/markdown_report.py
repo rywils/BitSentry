@@ -303,7 +303,13 @@ class MarkdownReportGenerator:
                 if raw_score is not None:
                     md.append(f"**Risk Score:** {raw_score}  \n")
 
-                md.append(f"**Affected URL:** {finding['url']}  \n\n")
+                endpoints = finding.get("affected_endpoints") or [finding["url"]]
+                if len(endpoints) == 1:
+                    md.append(f"**Affected URL:** {endpoints[0]}  \n\n")
+                else:
+                    md.append(f"**Affected Endpoints ({len(endpoints)}):**\n")
+                    md.extend(f"- {endpoint}\n" for endpoint in endpoints)
+                    md.append("\n")
 
                 md.append("**Description:**\n")
                 md.append(f"{finding['description']}\n\n")
@@ -338,7 +344,13 @@ class MarkdownReportGenerator:
                 md.append(f"### {idx}. {finding['title']}\n")
                 md.append(f"**Category:** Edge Infrastructure  \n")
                 md.append(f"**Severity:** `INFO`  \n")
-                md.append(f"**Affected URL:** {finding['url']}  \n\n")
+                endpoints = finding.get("affected_endpoints") or [finding["url"]]
+                if len(endpoints) == 1:
+                    md.append(f"**Affected URL:** {endpoints[0]}  \n\n")
+                else:
+                    md.append(f"**Affected Endpoints ({len(endpoints)}):**\n")
+                    md.extend(f"- {endpoint}\n" for endpoint in endpoints)
+                    md.append("\n")
 
                 md.append("**Description:**\n")
                 md.append(f"{finding['description']}\n\n")

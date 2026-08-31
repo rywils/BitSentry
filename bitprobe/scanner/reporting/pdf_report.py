@@ -170,9 +170,20 @@ class PDFReportGenerator:
                         )
                     )
 
-                elements.append(
-                    Paragraph(f"Affected URL: {finding['url']}", self.styles["Normal"])
-                )
+                endpoints = finding.get("affected_endpoints") or [finding["url"]]
+                if len(endpoints) == 1:
+                    elements.append(
+                        Paragraph(f"Affected URL: {endpoints[0]}", self.styles["Normal"])
+                    )
+                else:
+                    elements.append(
+                        Paragraph(
+                            f"Affected Endpoints ({len(endpoints)}):",
+                            self.styles["Normal"],
+                        )
+                    )
+                    for endpoint in endpoints:
+                        elements.append(Paragraph(endpoint, self.styles["Normal"]))
                 elements.append(Spacer(1, 0.1 * inch))
 
                 elements.append(Paragraph("Description", self.styles["Heading3"]))
@@ -244,9 +255,20 @@ class PDFReportGenerator:
                         self.styles["Normal"],
                     )
                 )
-                elements.append(
-                    Paragraph(f"Affected URL: {finding['url']}", self.styles["Normal"])
-                )
+                endpoints = finding.get("affected_endpoints") or [finding["url"]]
+                if len(endpoints) == 1:
+                    elements.append(
+                        Paragraph(f"Affected URL: {endpoints[0]}", self.styles["Normal"])
+                    )
+                else:
+                    elements.append(
+                        Paragraph(
+                            f"Affected Endpoints ({len(endpoints)}):",
+                            self.styles["Normal"],
+                        )
+                    )
+                    for endpoint in endpoints:
+                        elements.append(Paragraph(endpoint, self.styles["Normal"]))
                 elements.append(Spacer(1, 0.1 * inch))
 
                 elements.append(Paragraph("Description", self.styles["Heading3"]))

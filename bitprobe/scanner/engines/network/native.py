@@ -149,9 +149,27 @@ class NativePortScanner:
         }
 
 
+def resolve_ports(ports: str | List[int]) -> List[int]:
+    if isinstance(ports, list):
+        return sorted(set(ports))
+    if ports in {"top100", "top1000"}:
+        return TOP_100_PORTS
+
+    resolved = set()
+    for item in ports.split(","):
+        if "-" in item:
+            start, end = (int(value) for value in item.split("-", 1))
+            resolved.update(range(start, end + 1))
+        else:
+            resolved.add(int(item))
+    if not resolved or min(resolved) < 1 or max(resolved) > 65535:
+        raise ValueError(f"Invalid port specification: {ports}")
+    return sorted(resolved)
+
+
 def scan_target(
     target: str,
-    ports: str = "top100",
+    ports: str | List[int] = "top100",
     timeout_ms: int = 2000,
     concurrency: int = 100,
     grab_banners: bool = False,
@@ -169,16 +187,7 @@ def scan_target(
     Returns:
         Dict with scan results
     """
-    # Resolve ports
-    if ports == "top100":
-        port_list = TOP_100_PORTS
-    elif ports == "top1000":
-        # For now just use top 100
-        port_list = TOP_100_PORTS
-    elif isinstance(ports, list):
-        port_list = ports
-    else:
-        port_list = TOP_100_PORTS
+    port_list = resolve_ports(ports)
     
     scanner = NativePortScanner(
         timeout=timeout_ms / 1000.0,
