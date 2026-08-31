@@ -15,9 +15,8 @@ TECH_SIGNATURES = {
     # Web Frameworks
     "frameworks": {
         "WordPress": {
-            "body_patterns": [r"wp-content", r"wp-includes", r"wordpress", r'generator"? content="[^"]*WordPress'],
-            "headers": {"X-Powered-By": r"PHP/[\d.]+"},
-            "meta": [r'WordPress [\d.]+'],
+            "body_patterns": [r"wp-content", r"wp-includes", r"wordpress"],
+            "meta": [r"WordPress ([\d.]+)"],
         },
         "Laravel": {
             "body_patterns": [r"laravel", r"csrf-token"],
@@ -56,13 +55,13 @@ TECH_SIGNATURES = {
     # Web Servers
     "servers": {
         "Apache": {
-            "headers": {"Server": r"Apache[/\s]?[\d.]*"},
+            "headers": {"Server": r"Apache(?:[/\s]([\d.]+))?"},
         },
         "Nginx": {
-            "headers": {"Server": r"nginx[/\s]?[\d.]*"},
+            "headers": {"Server": r"nginx(?:[/\s]([\d.]+))?"},
         },
         "IIS": {
-            "headers": {"Server": r"Microsoft-IIS[/\s]?[\d.]*"},
+            "headers": {"Server": r"Microsoft-IIS(?:[/\s]([\d.]+))?"},
         },
         "Caddy": {
             "headers": {"Server": r"Caddy"},
@@ -95,7 +94,7 @@ TECH_SIGNATURES = {
     # Programming Languages
     "languages": {
         "PHP": {
-            "headers": {"X-Powered-By": r"PHP[/\s]?[\d.]*"},
+            "headers": {"X-Powered-By": r"PHP[/\s]?([\d.]+)"},
             "cookies": [r"PHPSESSID"],
         },
         "Python": {
@@ -261,14 +260,15 @@ def fingerprint_technologies(response) -> Dict:
                     version = ver
             
             # Check headers
-            if not detected and "headers" in signatures:
-                # Normalize header keys for comparison
+            if (not detected or version is None) and "headers" in signatures:
                 normalized_headers = {k.lower(): v for k, v in response.headers.items()}
-                found, ver = check_headers(normalized_headers, 
-                    {k.lower(): v for k, v in signatures["headers"].items()})
+                found, ver = check_headers(
+                    normalized_headers,
+                    {k.lower(): v for k, v in signatures["headers"].items()},
+                )
                 if found:
                     detected = True
-                    version = ver
+                    version = version or ver
             
             # Check cookies
             if not detected and "cookies" in signatures:
@@ -276,11 +276,11 @@ def fingerprint_technologies(response) -> Dict:
                     detected = True
             
             # Check meta tags (simplified - just search in body)
-            if not detected and "meta" in signatures:
+            if (not detected or version is None) and "meta" in signatures:
                 found, ver = check_body_patterns(body, signatures["meta"])
                 if found:
                     detected = True
-                    version = ver
+                    version = version or ver
             
             if detected:
                 tech_item = {"name": tech_name}
