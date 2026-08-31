@@ -41,6 +41,16 @@ def test_php_header_alone_does_not_claim_wordpress():
     assert "framework" not in detected
 
 
+def test_unversioned_php_header_still_detects_php():
+    response = versioned_wordpress_response()
+    response.headers["X-Powered-By"] = "PHP"
+    response._content = b"<html>PHP application</html>"
+
+    detected = fingerprint_technologies(response)
+
+    assert detected["_detailed"]["languages"] == [{"name": "PHP"}]
+
+
 @pytest.mark.parametrize(
     ("header", "name", "version"),
     [

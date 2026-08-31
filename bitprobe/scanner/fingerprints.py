@@ -94,7 +94,7 @@ TECH_SIGNATURES = {
     # Programming Languages
     "languages": {
         "PHP": {
-            "headers": {"X-Powered-By": r"PHP[/\s]?([\d.]+)"},
+            "headers": {"X-Powered-By": r"PHP(?:[/\s]([\d.]+))?"},
             "cookies": [r"PHPSESSID"],
         },
         "Python": {
