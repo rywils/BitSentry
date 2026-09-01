@@ -7,6 +7,19 @@ def failing_writer(*_args):
     raise RuntimeError("reportlab missing")
 
 
+def test_reporter_writes_pdf_output(tmp_path):
+    artifacts = Reporter.write(
+        {"scan_id": "scan_1", "findings": [], "statistics": {}},
+        "scan_1",
+        ["pdf"],
+        str(tmp_path),
+    )
+
+    pdf_path = tmp_path / "scan_1.pdf"
+    assert artifacts == [str(pdf_path.resolve())]
+    assert pdf_path.read_bytes().startswith(b"%PDF-")
+
+
 def test_reporter_preserves_json_when_pdf_fails(tmp_path, monkeypatch):
     writers = Reporter.WRITERS.copy()
     writers["pdf"] = failing_writer
