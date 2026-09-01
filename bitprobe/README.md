@@ -21,6 +21,7 @@ This repository contains the **public demonstration** of BitProbe. The full scan
 - Sensitive file and misconfiguration detection
 - CVE correlation using a local vulnerability database
 - Safe GET-based checks for reflected XSS, SQL errors, path traversal, open redirects, command injection, template injection, and local file inclusion
+- Optional same-origin browser checks for JavaScript-driven DOM XSS
 - Explicit `safe-active` profile with bounded adaptive request budgets
 - Grouped, severity-ordered findings with affected endpoint lists
 - Automated attack-chain correlation
@@ -42,6 +43,7 @@ python3 bitprobe.py \
 ## Security Notice
 
 Active checks use bounded, read-only GET requests and do not submit POST forms or follow external redirects.
+DOM checks require the optional browser dependencies: `pip install -r bitprobe/requirements-dom.txt && playwright install chromium`.
 Run scans only against systems you own or have explicit permission to test.
 
 ## License

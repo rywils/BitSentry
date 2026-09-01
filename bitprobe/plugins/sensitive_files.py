@@ -17,6 +17,8 @@ class SensitiveFilesPlugin(BasePlugin):
     - Content analysis to detect custom error pages
     """
 
+    WARNING_PATHS = {"admin", "admin/"}
+
     SENSITIVE_PATHS = [
         (".env", "high"),
         (".git/config", "high"),
@@ -212,12 +214,22 @@ class SensitiveFilesPlugin(BasePlugin):
             if verbose:
                 print(f"[VERBOSE] [sensitive_files]   FOUND: {path} is exposed!")
 
+            is_warning = path in self.WARNING_PATHS
             findings.append(
                 Finding(
                     plugin_name=self.get_name(),
-                    severity=severity,
-                    title=f"Exposed Sensitive File: {path}",
-                    description=f"The file '{path}' is publicly accessible and appears to contain legitimate sensitive data.",
+                    severity="info" if is_warning else severity,
+                    title=(
+                        f"Potential Sensitive Path: {path}"
+                        if is_warning
+                        else f"Exposed Sensitive File: {path}"
+                    ),
+                    description=(
+                        f"The path '{path}' returned HTML. This is an observation only; "
+                        "a route name alone does not prove sensitive data is exposed."
+                        if is_warning
+                        else f"The file '{path}' is publicly accessible and appears to contain legitimate sensitive data."
+                    ),
                     url=test_url,
                     evidence={
                         "path": path,
@@ -225,7 +237,12 @@ class SensitiveFilesPlugin(BasePlugin):
                         "content_type": response.headers.get("Content-Type", ""),
                         "status_code": response.status_code,
                     },
-                    remediation=f"Remove '{path}' from public access or restrict via authentication/authorization.",
+                    remediation=(
+                        "Review whether this route is intentional, such as an authenticated area or honeypot."
+                        if is_warning
+                        else f"Remove '{path}' from public access or restrict via authentication/authorization."
+                    ),
+                    metadata={"classification": "warning"} if is_warning else {},
                 )
             )
 

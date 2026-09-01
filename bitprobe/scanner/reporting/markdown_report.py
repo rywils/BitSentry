@@ -248,6 +248,7 @@ class MarkdownReportGenerator:
         adjusted_risk = risk.get("adjusted_score", risk.get("normalized_score", 0))
         normalized_risk = risk.get("normalized_score", adjusted_risk)
         vuln_total = stats.get('total_findings', 0)
+        warning_total = stats.get('warning_findings', 0)
         edge_total = stats.get('edge_infrastructure_findings', 0)
 
         # EXEC SUMMARY
@@ -273,6 +274,8 @@ class MarkdownReportGenerator:
                 md.append(f"- **{sev.upper()}**: {count}\n")
 
         md.append(f"\n**Total Vulnerabilities:** {vuln_total}  \n")
+        if warning_total > 0:
+            md.append(f"**Warnings:** {warning_total} _(not counted as vulnerabilities)_  \n")
         if edge_total > 0:
             md.append(
                 f"> **Edge Infrastructure Findings:** {edge_total}  \n"
@@ -285,7 +288,15 @@ class MarkdownReportGenerator:
         md.append("\n---\n")
 
         findings = self.report_data.get("findings", [])
-        vuln_findings = [f for f in findings if not f.get("edge_infrastructure")]
+        warning_findings = [
+            f for f in findings
+            if f.get("metadata", {}).get("classification") == "warning"
+        ]
+        vuln_findings = [
+            f for f in findings
+            if not f.get("edge_infrastructure")
+            and f.get("metadata", {}).get("classification") != "warning"
+        ]
         edge_findings = [f for f in findings if f.get("edge_infrastructure")]
 
         # VULNERABILITIES SECTION
@@ -331,6 +342,30 @@ class MarkdownReportGenerator:
                 md.append("**Remediation:**\n")
                 md.append(f"{finding['remediation']}\n\n")
                 md.append("---\n\n")
+
+        # WARNINGS SECTION
+        if warning_findings:
+            md.append("## Warnings (Informational)\n\n")
+            md.append(
+                "These observations may deserve review, but the available evidence does not "
+                "establish a security vulnerability.\n\n"
+            )
+            for idx, finding in enumerate(warning_findings, 1):
+                md.append(f"### {idx}. {finding['title']}\n")
+                md.append("**Classification:** `WARNING`  \n")
+                endpoints = finding.get("affected_endpoints") or [finding["url"]]
+                if len(endpoints) == 1:
+                    md.append(f"**Affected URL:** {endpoints[0]}  \n\n")
+                else:
+                    md.append(f"**Affected Endpoints ({len(endpoints)}):**\n")
+                    md.extend(f"- {endpoint}\n" for endpoint in endpoints)
+                    md.append("\n")
+                md.append("**Description:**\n")
+                md.append(f"{finding['description']}\n\n")
+                md.append("**Evidence:**\n")
+                md.append("```json\n")
+                md.append(f"{finding.get('evidence', {})}\n")
+                md.append("```\n\n---\n\n")
 
         # EDGE INFRASTRUCTURE SECTION
         if edge_findings:

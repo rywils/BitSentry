@@ -9,6 +9,7 @@ from requests.exceptions import RequestException
 
 from plugins.base_plugin import BasePlugin, Finding
 from scanner.active_checks import (
+    dom_xss,
     command_injection,
     file_inclusion,
     redirects,
@@ -199,7 +200,7 @@ class WebVulnerabilitiesPlugin(BasePlugin):
         if _origin(response_url) != _origin(page_url):
             return []
 
-        findings = []
+        findings = dom_xss.scan_dom(response_url) if is_html else []
         tested = 0
         origin_states = {}
         targets = (

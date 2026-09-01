@@ -88,6 +88,26 @@ def test_report_counts_and_scores_grouped_vulnerability_once():
     assert report["findings"][0]["endpoint_count"] == 2
 
 
+def test_warnings_are_reported_but_excluded_from_vulnerability_totals():
+    engine = ScanEngine(ScanConfig("https://example.test"))
+    engine.findings = [
+        Finding(
+            plugin_name="tls_analysis",
+            severity="info",
+            title="TLS Configuration on Port 443",
+            description="Healthy configuration observation, not a vulnerability.",
+            url="example.test:443",
+            metadata={"classification": "warning"},
+        )
+    ]
+
+    report = engine._generate_report(1.0, [])
+
+    assert report["statistics"]["total_findings"] == 0
+    assert report["statistics"]["warning_findings"] == 1
+    assert report["findings"][0]["metadata"]["classification"] == "warning"
+
+
 def test_attack_chains_reference_grouped_findings():
     grouped = group_findings(
         [

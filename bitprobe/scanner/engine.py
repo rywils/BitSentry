@@ -133,6 +133,7 @@ class ColoredConsole:
         stats = report.get("statistics", {})
         risk = stats.get("risk", {})
         vuln_total = stats.get('total_findings', 0)
+        warning_total = stats.get('warning_findings', 0)
         edge_total = stats.get('edge_infrastructure_findings', 0)
         total_with_edge = stats.get('total_findings_with_edge', vuln_total + edge_total)
         
@@ -177,7 +178,7 @@ class ColoredConsole:
                 )
             self.rich_console.print(
                 f"\nTotal Vulnerabilities: {vuln_total}  "
-                f"(+ {edge_total} edge infrastructure)",
+                f"(+ {warning_total} warnings, {edge_total} edge infrastructure)",
                 style="bold"
             )
         else:
@@ -200,6 +201,8 @@ class ColoredConsole:
                     print(f"  {severity.upper()}: {count}")
 
             print(f"\nTotal Vulnerabilities: {vuln_total}")
+            if warning_total > 0:
+                print(f"Warnings (INFO): {warning_total}  (not counted as vulnerabilities)")
             if edge_total > 0:
                 print(f"Edge Infrastructure (INFO): {edge_total}  "
                       f"(not counted as vulnerabilities)")
@@ -256,7 +259,6 @@ class ScanEngine:
                     self.console.success(f"Loaded plugin: {plugin.get_name()}")
                     if self.verbose:
                         self.console.info(f"  Plugin description: {plugin.get_description()}")
-                    logger.info(f"Plugin loaded: {plugin.get_name()} v{getattr(plugin, 'get_version', lambda: 'unknown')()}")
                 except Exception as e:
                     self.console.error(f"Failed to load plugin {plugin_name}: {e}")
                     logger.error(f"Plugin load failed: {plugin_name}", exc_info=True)
@@ -386,7 +388,13 @@ class ScanEngine:
 
         grouped_findings = group_findings([f.to_dict() for f in self.findings])
         self.console.info("Building attack chains...")
-        attack_chains = build_attack_chains(grouped_findings)
+        attack_chains = build_attack_chains(
+            [
+                finding
+                for finding in grouped_findings
+                if finding.get("metadata", {}).get("classification") != "warning"
+            ]
+        )
 
         self.console.info("Generating report...")
         report = self._generate_report(duration, attack_chains, grouped_findings)
@@ -424,9 +432,17 @@ class ScanEngine:
         prioritized = prioritize_findings(grouped_findings)
         all_findings = prioritized["findings"]
 
-        # Separate edge infrastructure from actual vulnerabilities
+        # Separate observations and edge infrastructure from vulnerabilities.
         edge_findings = [f for f in all_findings if f.get("edge_infrastructure")]
-        vuln_findings = [f for f in all_findings if not f.get("edge_infrastructure")]
+        warning_findings = [
+            f for f in all_findings
+            if f.get("metadata", {}).get("classification") == "warning"
+        ]
+        vuln_findings = [
+            f for f in all_findings
+            if not f.get("edge_infrastructure")
+            and f.get("metadata", {}).get("classification") != "warning"
+        ]
 
         # Edge findings are always informational-only
         for f in edge_findings:
@@ -465,6 +481,7 @@ class ScanEngine:
                 "duration_seconds": round(duration, 2),
                 "findings_by_severity": findings_by_severity,
                 "total_findings": len(vuln_findings),
+                "warning_findings": len(warning_findings),
                 "edge_infrastructure_findings": len(edge_findings),
                 "total_findings_with_edge": len(all_findings),
                 "overall_risk_score": round(normalized_risk, 2),
