@@ -201,6 +201,9 @@ Direct product commands are also available via `python bitprobe/bitprobe.py ...`
 
 ```bash
 python bitsentry.py profiles
+
+# Bounded active web vulnerability checks
+python bitsentry.py scan https://example.com --profile safe-active
 ```
 
 ## Suite Output and Reporting

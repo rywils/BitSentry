@@ -6,6 +6,7 @@ from requests import Response
 from plugins.web_vulnerabilities import (
     WebVulnerabilitiesPlugin,
     discover_get_targets,
+    discover_json_targets,
 )
 from scanner.crawler import Crawler
 
@@ -20,26 +21,34 @@ def response(body="<html></html>", status=200, headers=None):
 
 
 class Handler:
-    def __init__(self, responder=None, page_html="<html></html>"):
+    def __init__(self, responder=None, page_html="<html></html>", page_headers=None):
         self.responder = responder or (lambda _params: response())
         self.page_html = page_html
+        self.page_headers = page_headers
         self.calls = []
 
     def get(self, url, **kwargs):
         self.calls.append((url, kwargs))
         params = kwargs.get("params")
         if params is None:
-            return response(self.page_html)
+            return response(self.page_html, headers=self.page_headers)
         return self.responder(params)
 
 
-def scan(parameter, responder, page_html="<html></html>", value="safe"):
-    handler = Handler(responder, page_html)
+def scan(parameter, responder, page_html="<html></html>", value="safe", page_headers=None):
+    handler = Handler(responder, page_html, page_headers)
     findings = WebVulnerabilitiesPlugin().scan(
         {"url": f"https://example.test/search?{parameter}={value}", "depth": 0},
         handler,
     )
     return findings, handler
+
+
+def test_discovers_json_get_parameters_without_body_keys():
+    assert discover_json_targets(
+        "https://example.test/api?query=ok",
+        '{"query":"ok","nested":{"secret":"x"}}',
+    ) == [("https://example.test/api", {"query": "ok"})]
 
 
 def test_discovers_query_parameters_and_same_origin_get_forms():
@@ -161,6 +170,22 @@ def test_escaped_reflection_is_not_reported_as_xss():
     assert all("XSS" not in finding.title for finding in findings)
 
 
+def test_json_endpoint_is_actively_checked():
+    def responder(params):
+        if params["query"].startswith("../../"):
+            return response('{"error":"root:x:0:0"}', headers={"Content-Type": "application/json"})
+        return response('{"query":"ok"}', headers={"Content-Type": "application/json"})
+
+    findings, _ = scan(
+        "query",
+        responder,
+        page_html='{"query":"ok"}',
+        page_headers={"Content-Type": "application/json"},
+    )
+
+    assert any("Path Traversal" in finding.title for finding in findings)
+
+
 def test_non_html_reflection_is_not_reported_as_xss():
     def responder(params):
         value = params["q"]
@@ -183,6 +208,43 @@ def test_detects_new_sql_error_signature_without_leaking_original_value():
         "SQL Injection Error in parameter 'id'"
     ]
     assert "secret-token" not in findings[0].evidence["payload"]
+
+
+def test_detects_command_injection_marker():
+    def responder(params):
+        if "bitsentry-cmd-" in params["cmd"]:
+            return response(params["cmd"])
+        return response("safe")
+
+    findings, _ = scan("cmd", responder)
+
+    assert [finding.title for finding in findings] == [
+        "Command Injection in parameter 'cmd'"
+    ]
+
+
+def test_detects_template_expression_evaluation():
+    def responder(params):
+        if params["template"] == "{{7*7}}":
+            return response("49")
+        return response("safe")
+
+    findings, _ = scan("template", responder)
+
+    assert [finding.title for finding in findings] == [
+        "Server-Side Template Injection in parameter 'template'"
+    ]
+
+
+def test_detects_local_file_inclusion_signature():
+    def responder(params):
+        if params["file"].startswith("php://filter"):
+            return response("cm9vdDp4")
+        return response("safe")
+
+    findings, _ = scan("file", responder)
+
+    assert any("Local File Inclusion" in finding.title for finding in findings)
 
 
 def test_existing_sql_error_is_not_reported():

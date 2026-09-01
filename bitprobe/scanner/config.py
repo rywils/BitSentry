@@ -18,6 +18,24 @@ SCAN_PROFILES = {
             "tls_analysis",
         ],
     },
+    "safe-active": {
+        "name": "safe-active",
+        "description": "Bounded active web vulnerability checks",
+        "depth": 2,
+        "max_urls": 50,
+        "rate_limit": 1.0,
+        "timeout": 30,
+        "parallel_workers": 8,
+        "active_scan_mode": "safe",
+        "enabled_plugins": [
+            "fingerprinting",
+            "security_headers",
+            "tls_analysis",
+            "sensitive_files",
+            "web_vulnerabilities",
+            "cve_correlation",
+        ],
+    },
     "standard": {
         "name": "standard",
         "description": "Balanced depth and speed",
@@ -92,6 +110,7 @@ class ScanConfig:
         parallel_workers: int = 8,
         profile: Optional[str] = None,
         verbose: bool = False,
+        active_scan_mode: str = "safe",
     ):
         # Apply profile settings first, then override with explicit parameters
         profile_config = self._get_profile_config(profile)
@@ -105,6 +124,9 @@ class ScanConfig:
         self.output_formats = output_formats or ["json", "md", "pdf"]
         self.output_dir = output_dir
         self.verbose = verbose
+        self.active_scan_mode = (
+            active_scan_mode if profile is None else profile_config.get("active_scan_mode", active_scan_mode)
+        )
         
         # Use profile plugins or default to all
         if enabled_plugins:

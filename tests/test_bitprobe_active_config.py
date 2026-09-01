@@ -2,6 +2,13 @@ from scanner.config import ScanConfig
 from scanner.engine import ScanEngine
 
 
+def test_safe_active_profile_enables_safe_mode():
+    config = ScanConfig("https://example.test", profile="safe-active")
+
+    assert config.active_scan_mode == "safe"
+    assert "web_vulnerabilities" in config.enabled_plugins
+
+
 def test_active_web_checks_load_for_default_standard_and_full_scans():
     assert "web_vulnerabilities" in ScanConfig("https://example.test").enabled_plugins
     assert "web_vulnerabilities" in ScanConfig(
