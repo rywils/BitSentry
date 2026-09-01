@@ -66,6 +66,28 @@ def test_discovers_query_parameters_and_same_origin_get_forms():
     ]
 
 
+def test_discovery_ignores_form_actions_with_malformed_ports():
+    targets = discover_get_targets(
+        "https://example.test/page",
+        '<form action="https://example.test:notaport/search" method="get">'
+        '<input name="q"></form>',
+    )
+
+    assert targets == []
+
+
+def test_discovery_normalizes_equivalent_ipv6_hosts():
+    targets = discover_get_targets(
+        "https://[::1]/page",
+        '<form action="https://[0:0:0:0:0:0:0:1]/search" method="get">'
+        '<input name="q"></form>',
+    )
+
+    assert targets == [
+        ("https://[0:0:0:0:0:0:0:1]/search", {"q": ""})
+    ]
+
+
 def test_get_forms_submit_only_successful_controls_and_keep_repeated_values():
     html = """
     <form action="/filter" method="get">
@@ -256,3 +278,82 @@ def test_active_plugin_reuses_crawler_response():
     )
 
     assert all(kwargs.get("params") is not None for _url, kwargs in handler.calls)
+
+
+def test_active_plugin_rejects_cross_origin_redirect_responses():
+    redirected = response(
+        '<form action="/danger" method="get"><input name="delete" value="1"></form>'
+    )
+    redirected.url = "https://evil.test/page"
+    handler = Handler()
+
+    findings = WebVulnerabilitiesPlugin().scan(
+        {
+            "url": "https://example.test/start",
+            "depth": 0,
+            "response": redirected,
+        },
+        handler,
+    )
+
+    assert findings == []
+    assert handler.calls == []
+
+
+def test_active_plugin_allows_explicit_default_port_redirects():
+    redirected = response("<html></html>")
+    redirected.url = "https://example.test:443/search?q=safe"
+    handler = Handler()
+
+    WebVulnerabilitiesPlugin().scan(
+        {
+            "url": "https://example.test/start",
+            "depth": 0,
+            "response": redirected,
+        },
+        handler,
+    )
+
+    assert handler.calls
+    assert {url for url, _kwargs in handler.calls} == {
+        "https://example.test:443/search"
+    }
+
+
+def test_active_plugin_normalizes_idna_redirect_hosts():
+    redirected = response("<html></html>")
+    redirected.url = "https://xn--bcher-kva.test/search?q=safe"
+    handler = Handler()
+
+    WebVulnerabilitiesPlugin().scan(
+        {
+            "url": "https://bücher.test/start",
+            "depth": 0,
+            "response": redirected,
+        },
+        handler,
+    )
+
+    assert handler.calls
+
+
+def test_active_plugin_resolves_forms_from_same_origin_final_url():
+    redirected = response(
+        '<form action="danger" method="get"><input name="q" value="safe"></form>'
+    )
+    redirected.url = "https://example.test/redirected/page"
+    handler = Handler()
+
+    WebVulnerabilitiesPlugin().scan(
+        {
+            "url": "https://example.test/start",
+            "depth": 0,
+            "response": redirected,
+        },
+        handler,
+    )
+
+    assert handler.calls
+    assert {url for url, _kwargs in handler.calls} == {
+        "https://example.test/redirected/danger"
+    }

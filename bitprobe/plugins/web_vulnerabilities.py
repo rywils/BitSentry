@@ -1,3 +1,4 @@
+import ipaddress
 import re
 import secrets
 from typing import Dict, List
@@ -91,9 +92,35 @@ def _form_values(form) -> Dict:
     return values
 
 
+def _canonical_host(host):
+    try:
+        return ipaddress.ip_address(host).compressed
+    except ValueError:
+        try:
+            return host.encode("idna").decode("ascii").lower()
+        except UnicodeError:
+            return host.lower()
+
+
+def _origin(url):
+    try:
+        parsed = urlparse(url)
+        port = parsed.port
+    except ValueError:
+        return None
+    scheme = parsed.scheme.lower()
+    host = _canonical_host(parsed.hostname or "")
+    if not scheme or not host:
+        return None
+    default_port = {"http": 80, "https": 443}.get(scheme)
+    return scheme, host, port or default_port
+
+
 def discover_get_targets(url: str, html: str) -> List[tuple[str, Dict]]:
+    origin = _origin(url)
+    if origin is None:
+        return []
     parsed = urlparse(url)
-    origin = (parsed.scheme.lower(), parsed.netloc.lower())
     targets = []
     query = _parameter_values(parse_qsl(parsed.query, keep_blank_values=True))
     if query:
@@ -104,9 +131,12 @@ def discover_get_targets(url: str, html: str) -> List[tuple[str, Dict]]:
     for form in soup.find_all("form"):
         if form.get("method", "get").lower() != "get":
             continue
-        action = urljoin(url, form.get("action") or url)
-        action_parsed = urlparse(action)
-        if (action_parsed.scheme.lower(), action_parsed.netloc.lower()) != origin:
+        try:
+            action = urljoin(url, form.get("action") or url)
+            action_parsed = urlparse(action)
+        except ValueError:
+            continue
+        if _origin(action) != origin:
             continue
         values = _parameter_values(
             parse_qsl(action_parsed.query, keep_blank_values=True)
@@ -171,9 +201,14 @@ class WebVulnerabilitiesPlugin(BasePlugin):
         if page is None or "text/html" not in page.headers.get("Content-Type", "").lower():
             return []
 
+        response_url = getattr(page, "url", None) or page_url
+        original_origin = _origin(page_url)
+        if original_origin is None or _origin(response_url) != original_origin:
+            return []
+
         findings = []
         tested = 0
-        for endpoint, params in discover_get_targets(page_url, page.text):
+        for endpoint, params in discover_get_targets(response_url, page.text):
             baseline = request_handler.get(
                 endpoint,
                 params=params,
