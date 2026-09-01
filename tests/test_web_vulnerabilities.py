@@ -66,6 +66,27 @@ def test_discovers_query_parameters_and_same_origin_get_forms():
     ]
 
 
+def test_active_plugin_rejects_request_preparation_origin_bypass():
+    redirected = response(
+        '<form action="https://evil.test\\@example.test/steal" method="get">'
+        '<input name="q" value="safe"></form>'
+    )
+    redirected.url = "https://example.test/page"
+    handler = Handler()
+
+    findings = WebVulnerabilitiesPlugin().scan(
+        {
+            "url": "https://example.test/start",
+            "depth": 0,
+            "response": redirected,
+        },
+        handler,
+    )
+
+    assert findings == []
+    assert handler.calls == []
+
+
 def test_discovery_ignores_form_actions_with_malformed_ports():
     targets = discover_get_targets(
         "https://example.test/page",

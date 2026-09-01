@@ -5,6 +5,8 @@ from typing import Dict, List
 from urllib.parse import parse_qsl, urljoin, urlparse, urlunparse
 
 from bs4 import BeautifulSoup
+from requests import Request
+from requests.exceptions import RequestException
 
 from plugins.base_plugin import BasePlugin, Finding
 
@@ -104,16 +106,17 @@ def _canonical_host(host):
 
 def _origin(url):
     try:
-        parsed = urlparse(url)
+        prepared_url = Request("GET", url).prepare().url
+        parsed = urlparse(prepared_url)
         port = parsed.port
-    except ValueError:
+    except (RequestException, UnicodeError, ValueError):
         return None
     scheme = parsed.scheme.lower()
     host = _canonical_host(parsed.hostname or "")
     if not scheme or not host:
         return None
     default_port = {"http": 80, "https": 443}.get(scheme)
-    return scheme, host, port or default_port
+    return scheme, host, port if port is not None else default_port
 
 
 def discover_get_targets(url: str, html: str) -> List[tuple[str, Dict]]:
