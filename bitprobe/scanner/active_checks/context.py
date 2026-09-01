@@ -27,6 +27,7 @@ class ActiveScanContext:
         self.origin = origin
         self.baseline = baseline
         self.params = params
+        self.baseline_sql = getattr(baseline, "_bitsentry_sql_errors", set())
         self._request = request
         self._endpoint_budget = endpoint_budget
         self._endpoint_requests = 0
