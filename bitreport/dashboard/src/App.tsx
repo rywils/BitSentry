@@ -1,416 +1,190 @@
-import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Legend,
-  Line,
-  LineChart,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 import type { HistoryFile, HistoryRun, NormalizedFinding, SuiteReport } from "./types";
 
-const SEV_COLORS: Record<string, string> = {
-  critical: "#f85149",
-  high: "#db6d28",
-  medium: "#d4a72c",
-  low: "#3fb950",
-  info: "#58a6ff",
-};
+const SEVERITIES = ["critical", "high", "medium", "low", "info"];
 
-type HistoryPoint = { label: string; findings: number; riskIndex: number };
-
-function historyLabel(run: HistoryRun, index: number): string {
-  return run.generated_at?.slice(0, 10) || run.run_id?.slice(0, 8) || `#${index + 1}`;
-}
-
-function useReport() {
-  const [data, setData] = useState<SuiteReport | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+function useJson<T>(path: string) {
+  const [data, setData] = useState<T | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("./report.json")
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
+    fetch(path)
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json() as Promise<T>;
       })
-      .then((j) => setData(j as SuiteReport))
-      .catch((e) => setErr(String(e)));
-  }, []);
+      .then(setData)
+      .catch((reason) => setError(String(reason)));
+  }, [path]);
 
-  return { data, err };
+  return { data, error };
 }
 
-function useHistory() {
-  const [hist, setHist] = useState<HistoryFile | null>(null);
-  useEffect(() => {
-    fetch("./history.json")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => (j && Array.isArray(j.runs) ? setHist(j as HistoryFile) : setHist(null)))
-      .catch(() => setHist(null));
-  }, []);
-  return hist;
+function historyLabel(run: HistoryRun, index: number) {
+  return run.generated_at?.slice(0, 10) || run.run_id?.slice(0, 8) || `run ${index + 1}`;
 }
 
-function Header() {
+function Header({ report }: { report: SuiteReport }) {
   return (
-    <header style={header}>
-      <h1 style={{ margin: 0, fontSize: "1.35rem", fontWeight: 600 }}>BitReport</h1>
-    </header>
-  );
-}
-
-function ReportHeader({ data }: { data: SuiteReport }) {
-  return (
-    <header style={header}>
-      <div>
-        <h1 style={{ margin: 0, fontSize: "1.35rem", fontWeight: 600 }}>BitReport</h1>
-        <p style={{ margin: "0.35rem 0 0", color: "var(--muted)", fontSize: "0.88rem" }}>
-          {data.title ?? "Suite report"} · {data.generated_at ?? ""}
-        </p>
+    <header className="masthead">
+      <div className="brand-lockup">
+        <span className="eyebrow">BitSentry / exposure register</span>
+        <h1>Know what can break.</h1>
+        <p>{report.target || report.title || "Security assessment"}</p>
       </div>
-      <div style={runId}>run {data.run_id?.slice(0, 8)}…</div>
+      <div className="run-stamp">
+        <span>Latest run</span>
+        <strong>{report.generated_at || "—"}</strong>
+        <code>{report.run_id?.slice(0, 12) || "unidentified"}</code>
+      </div>
     </header>
   );
 }
 
-function ErrorView({ err }: { err: string }) {
+function RiskRail({ report }: { report: SuiteReport }) {
+  const stats = report.statistics || {};
+  const score = stats.risk?.normalized_score ?? 0;
+  const level = stats.risk?.level || "unrated";
+  const total = report.rollups?.total_findings ?? stats.total_findings ?? report.findings?.length ?? 0;
+
   return (
-    <div style={shell}>
-      <Header />
-      <main style={{ padding: "2rem", maxWidth: 720 }}>
-        <p style={{ color: "var(--crit)" }}>
-          Could not load <code>report.json</code>: {err}
-        </p>
-        <p style={{ color: "var(--muted)", fontSize: "0.9rem" }}>
-          Serve this folder over HTTP (e.g. <code>python -m http.server 8765</code>) so the
-          dashboard can fetch the report. Opening <code>index.html</code> via{" "}
-          <code>file://</code> often blocks fetch.
-        </p>
-      </main>
-    </div>
+    <section className="risk-rail" aria-label="Risk summary">
+      <div className="risk-score">
+        <span className="eyebrow">Exposure index</span>
+        <strong>{Math.round(score)}</strong>
+        <span className={`risk-level level-${level.toLowerCase()}`}>{level}</span>
+      </div>
+      <div className="rail-stat">
+        <span>Grouped findings</span>
+        <strong>{total}</strong>
+      </div>
+      <div className="rail-stat">
+        <span>Endpoints in scope</span>
+        <strong>{report.findings?.reduce((sum, finding) => sum + (finding.endpoint_count || 1), 0) || 0}</strong>
+      </div>
+      <div className="rail-note">Counts represent distinct issues, not every page where they appeared.</div>
+    </section>
   );
 }
 
-function LoadingView() {
-  return (
-    <div style={shell}>
-      <Header />
-      <main style={{ padding: "3rem", color: "var(--muted)" }}>Loading report…</main>
-    </div>
-  );
-}
+function SeveritySummary({ report }: { report: SuiteReport }) {
+  const values = report.rollups?.findings_by_severity || {};
+  const total = SEVERITIES.reduce((sum, severity) => sum + (values[severity] || 0), 0) || 1;
 
-function SeverityPieChart({ sevData }: { sevData: { name: string; value: number }[] }) {
   return (
-    <div style={{ width: "100%", height: 280 }}>
-      <ResponsiveContainer>
-        <PieChart>
-          <Pie
-            data={sevData}
-            dataKey="value"
-            nameKey="name"
-            innerRadius={48}
-            outerRadius={88}
-            paddingAngle={2}
-          >
-            {sevData.map((e) => (
-              <Cell key={e.name} fill={SEV_COLORS[e.name] ?? "#6e7681"} />
-            ))}
-          </Pie>
-          <Tooltip />
-          <Legend />
-        </PieChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
-function PluginBarChart({ pluginData }: { pluginData: { name: string; value: number }[] }) {
-  return (
-    <div style={{ width: "100%", height: 280 }}>
-      <ResponsiveContainer>
-        <BarChart data={pluginData} layout="vertical" margin={{ left: 8, right: 16 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-          <XAxis type="number" stroke="#8b8f9a" />
-          <YAxis type="category" dataKey="name" width={120} stroke="#8b8f9a" tick={{ fontSize: 11 }} />
-          <Tooltip />
-          <Bar dataKey="value" fill="var(--accent)" radius={[0, 4, 4, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
-function HistoryTrendSection({ historyTrend }: { historyTrend: HistoryPoint[] }) {
-  return (
-    <section style={{ ...panel, marginTop: "1.25rem" }}>
-      <h2 style={h2}>Suite run history ({historyTrend.length} runs)</h2>
-      <p style={{ color: "var(--muted)", fontSize: "0.85rem", marginTop: 0 }}>
-        Aggregated across prior BitReport builds under the same --suite-out tree. Current run is
-        included after the latest full-scan.
-      </p>
-      <div style={{ width: "100%", height: 300 }}>
-        <ResponsiveContainer>
-          <LineChart data={historyTrend} margin={{ left: 8, right: 12 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-            <XAxis dataKey="label" stroke="#8b8f9a" tick={{ fontSize: 11 }} />
-            <YAxis
-              yAxisId="left"
-              stroke="#58a6ff"
-              tick={{ fontSize: 11 }}
-              label={{ value: "Findings", angle: -90, position: "insideLeft", fill: "#58a6ff" }}
-            />
-            <YAxis
-              yAxisId="right"
-              orientation="right"
-              stroke="#d4a72c"
-              tick={{ fontSize: 11 }}
-              label={{
-                value: "Weighted severity index",
-                angle: 90,
-                position: "insideRight",
-                fill: "#d4a72c",
-              }}
-            />
-            <Tooltip />
-            <Legend />
-            <Line
-              yAxisId="left"
-              type="monotone"
-              dataKey="findings"
-              name="Total findings"
-              stroke="#58a6ff"
-              strokeWidth={2}
-              dot={{ r: 3 }}
-            />
-            <Line
-              yAxisId="right"
-              type="monotone"
-              dataKey="riskIndex"
-              name="Severity index"
-              stroke="#d4a72c"
-              strokeWidth={2}
-              dot={{ r: 3 }}
-            />
-          </LineChart>
-        </ResponsiveContainer>
+    <section className="severity-section">
+      <div className="section-heading">
+        <span className="eyebrow">Signal / severity</span>
+        <h2>Where the exposure concentrates</h2>
+      </div>
+      <div className="severity-bars">
+        {SEVERITIES.map((severity) => {
+          const count = values[severity] || 0;
+          return (
+            <div className={`severity-row severity-${severity}`} key={severity}>
+              <span>{severity}</span>
+              <div className="severity-track"><i style={{ width: `${(count / total) * 100}%` }} /></div>
+              <strong>{count}</strong>
+            </div>
+          );
+        })}
       </div>
     </section>
   );
 }
 
-function normalizeFinding(f: NormalizedFinding) {
-  return {
-    severity: (f.severity ?? "info").toLowerCase(),
-    severityLabel: (f.severity ?? "—").toUpperCase(),
-    plugin: f.plugin_name ?? "—",
-    title: f.title ?? "—",
-    url: f.url ?? "—",
-  };
-}
+function FindingItem({ finding }: { finding: NormalizedFinding }) {
+  const [open, setOpen] = useState(false);
+  const severity = (finding.severity || "info").toLowerCase();
+  const endpoints = finding.affected_endpoints || (finding.url ? [finding.url] : []);
 
-function FindingRow({ finding }: { finding: NormalizedFinding }) {
-  const f = normalizeFinding(finding);
   return (
-    <tr>
-      <td>
-        <span style={{ ...badge, background: SEV_COLORS[f.severity] ?? "#6e7681" }}>
-          {f.severityLabel}
+    <article className={`finding-item finding-${severity}`}>
+      <button className="finding-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
+        <span className="severity-mark" aria-hidden="true" />
+        <span className="finding-copy">
+          <span className="finding-meta">{severity} / {finding.plugin_name || "scanner"}</span>
+          <strong>{finding.title || "Untitled finding"}</strong>
+          <span>{finding.description || "No description provided."}</span>
         </span>
-      </td>
-      <td style={{ fontFamily: '"IBM Plex Mono", monospace', fontSize: "0.78rem" }}>{f.plugin}</td>
-      <td>{f.title}</td>
-      <td style={{ wordBreak: "break-all", fontSize: "0.85rem", color: "var(--muted)" }}>{f.url}</td>
-    </tr>
+        <span className="endpoint-count">{finding.endpoint_count || endpoints.length || 1}<small> endpoints</small></span>
+        <span className="chevron" aria-hidden="true">{open ? "−" : "+"}</span>
+      </button>
+      {open && (
+        <div className="finding-detail">
+          <div>
+            <span className="eyebrow">Remediation</span>
+            <p>{finding.remediation || "Review and remediate the affected behavior."}</p>
+          </div>
+          <div>
+            <span className="eyebrow">Affected endpoints</span>
+            <ul>{endpoints.map((endpoint) => <li key={endpoint}><code>{endpoint}</code></li>)}</ul>
+          </div>
+        </div>
+      )}
+    </article>
   );
 }
 
-function FindingsTable({ findings }: { findings: NormalizedFinding[] }) {
-  const [q, setQ] = useState("");
-  const [sev, setSev] = useState<string | "all">("all");
-
-  const filtered = useMemo(() => {
-    let rows = findings;
-    const s = q.trim().toLowerCase();
-    if (s) {
-      rows = rows.filter((f) => {
-        const t = `${f.title ?? ""} ${f.url ?? ""} ${f.plugin_name ?? ""}`.toLowerCase();
-        return t.includes(s);
-      });
-    }
-    if (sev !== "all") {
-      rows = rows.filter((f) => (f.severity ?? "").toLowerCase() === sev);
-    }
-    return rows;
-  }, [findings, q, sev]);
+function FindingsRegister({ findings }: { findings: NormalizedFinding[] }) {
+  const [query, setQuery] = useState("");
+  const [severity, setSeverity] = useState("all");
+  const filtered = useMemo(() => findings.filter((finding) => {
+    const text = `${finding.title || ""} ${finding.description || ""} ${finding.plugin_name || ""} ${(finding.affected_endpoints || []).join(" ")}`.toLowerCase();
+    return (!query || text.includes(query.toLowerCase())) && (severity === "all" || finding.severity?.toLowerCase() === severity);
+  }), [findings, query, severity]);
 
   return (
-    <section style={{ ...panel, marginTop: "1.25rem" }}>
-      <div style={filterBar}>
-        <h2 style={{ ...h2, margin: 0, flex: "1 1 200px" }}>All findings</h2>
-        <input
-          type="search"
-          placeholder="Filter title / URL / plugin…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          style={input}
-        />
-        <select value={sev} onChange={(e) => setSev(e.target.value as typeof sev)} style={input}>
+    <section className="register">
+      <div className="register-header">
+        <div className="section-heading"><span className="eyebrow">Findings / grouped</span><h2>Exposure register</h2></div>
+        <span className="result-count">{filtered.length} of {findings.length}</span>
+      </div>
+      <div className="filters">
+        <input aria-label="Search findings" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search findings or endpoints" />
+        <select aria-label="Filter by severity" value={severity} onChange={(event) => setSeverity(event.target.value)}>
           <option value="all">All severities</option>
-          <option value="critical">critical</option>
-          <option value="high">high</option>
-          <option value="medium">medium</option>
-          <option value="low">low</option>
-          <option value="info">info</option>
+          {SEVERITIES.map((item) => <option key={item} value={item}>{item}</option>)}
         </select>
-        <span style={{ color: "var(--muted)", fontSize: "0.85rem" }}>
-          {filtered.length} / {findings.length}
-        </span>
       </div>
-      <div style={{ overflowX: "auto" }}>
-        <table style={table}>
-          <thead>
-            <tr>
-              <th>Sev</th>
-              <th>Plugin</th>
-              <th>Title</th>
-              <th>URL / asset</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((f, i) => (
-              <FindingRow key={f.id ?? i} finding={f} />
-            ))}
-          </tbody>
-        </table>
+      <div className="finding-list">
+        {filtered.length ? filtered.map((finding, index) => <FindingItem key={finding.id || `${finding.title}-${index}`} finding={finding} />) : <p className="empty-state">No findings match this filter.</p>}
       </div>
     </section>
   );
+}
+
+function History({ history }: { history: HistoryFile }) {
+  const runs = history.runs || [];
+  return (
+    <section className="history">
+      <div className="section-heading"><span className="eyebrow">Signal over time</span><h2>Run history</h2></div>
+      <div className="history-list">
+        {runs.slice(-8).map((run, index) => <div className="history-row" key={run.run_id}><span>{historyLabel(run, index)}</span><i style={{ width: `${Math.min(100, run.weighted_severity_index || 0)}%` }} /><strong>{run.total_findings}</strong></div>)}
+      </div>
+    </section>
+  );
+}
+
+function ErrorView({ error }: { error: string }) {
+  return <main className="message"><span className="eyebrow">Report unavailable</span><h1>{error}</h1><p>Serve this directory over HTTP so the dashboard can read report.json.</p></main>;
 }
 
 export default function App() {
-  const { data, err } = useReport();
-  const hist = useHistory();
-
-  const findings = data?.findings ?? [];
-
-  const sevData = useMemo(() => {
-    const m = data?.rollups?.findings_by_severity ?? {};
-    return Object.entries(m)
-      .filter(([, v]) => (v as number) > 0)
-      .map(([name, value]) => ({ name, value: value as number }));
-  }, [data]);
-
-  const pluginData = useMemo(() => {
-    const m = data?.rollups?.findings_by_plugin ?? {};
-    return Object.entries(m)
-      .map(([name, value]) => ({ name, value: value as number }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 14);
-  }, [data]);
-
-  const historyTrend = useMemo<HistoryPoint[]>(() => {
-    const runs = hist?.runs ?? [];
-    return runs.map((r, i) => ({
-      label: historyLabel(r, i),
-      findings: r.total_findings ?? 0,
-      riskIndex: r.weighted_severity_index ?? 0,
-    }));
-  }, [hist]);
-
-  if (err) return <ErrorView err={err} />;
-  if (!data) return <LoadingView />;
+  const report = useJson<SuiteReport>("./report.json");
+  const history = useJson<HistoryFile>("./history.json");
+  if (report.error) return <ErrorView error={report.error} />;
+  if (!report.data) return <main className="message"><span className="eyebrow">BitSentry</span><h1>Reading the register.</h1></main>;
 
   return (
-    <div style={shell}>
-      <ReportHeader data={data} />
-      <main style={mainStyle}>
-        <section style={grid2}>
-          <div style={panel}>
-            <h2 style={h2}>Findings by severity</h2>
-            <SeverityPieChart sevData={sevData} />
-          </div>
-          <div style={panel}>
-            <h2 style={h2}>Top plugins (BitProbe)</h2>
-            <PluginBarChart pluginData={pluginData} />
-          </div>
-        </section>
-
-        {historyTrend.length > 0 ? <HistoryTrendSection historyTrend={historyTrend} /> : null}
-
-        <FindingsTable findings={findings} />
+    <div className="app-shell">
+      <Header report={report.data} />
+      <main>
+        <RiskRail report={report.data} />
+        <div className="overview-grid"><SeveritySummary report={report.data} />{history.data && <History history={history.data} />}</div>
+        <FindingsRegister findings={report.data.findings || []} />
       </main>
+      <footer>Generated by BitSentry <span>·</span> {report.data.bitreport_schema_version || "report schema"}</footer>
     </div>
   );
 }
-
-const shell: CSSProperties = { minHeight: "100vh", background: "var(--bg)" };
-const header: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  padding: "1.25rem 1.5rem",
-  borderBottom: "1px solid var(--border)",
-  background: "linear-gradient(180deg, #111218 0%, var(--bg) 100%)",
-};
-const runId: CSSProperties = {
-  textAlign: "right",
-  fontSize: "0.8rem",
-  color: "var(--muted)",
-  fontFamily: '"IBM Plex Mono", monospace',
-};
-const mainStyle: CSSProperties = { padding: "1.25rem 1.5rem 3rem", maxWidth: 1280, margin: "0 auto" };
-const panel: CSSProperties = {
-  background: "var(--panel)",
-  border: "1px solid var(--border)",
-  borderRadius: 10,
-  padding: "1rem 1.1rem",
-};
-const grid2: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))",
-  gap: "1.25rem",
-};
-const h2: CSSProperties = {
-  margin: "0 0 0.75rem",
-  fontSize: "1rem",
-  fontWeight: 600,
-  color: "var(--text)",
-};
-const filterBar: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: "0.75rem",
-  alignItems: "center",
-  marginBottom: "1rem",
-};
-const input: CSSProperties = {
-  background: "#0c0d10",
-  border: "1px solid var(--border)",
-  color: "var(--text)",
-  borderRadius: 6,
-  padding: "0.45rem 0.65rem",
-  minWidth: 200,
-  fontSize: "0.88rem",
-};
-const table: CSSProperties = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: "0.88rem",
-};
-const badge: CSSProperties = {
-  display: "inline-block",
-  padding: "0.12rem 0.4rem",
-  borderRadius: 4,
-  fontSize: "0.65rem",
-  fontWeight: 600,
-  color: "#0c0d10",
-};
