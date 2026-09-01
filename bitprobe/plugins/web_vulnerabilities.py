@@ -17,7 +17,7 @@ from scanner.active_checks import (
     ssti,
     traversal,
 )
-from scanner.active_checks.context import ActiveScanContext
+from scanner.active_checks.context import ActiveScanContext, OriginState
 
 
 MAX_PARAMETERS = 6
@@ -201,6 +201,7 @@ class WebVulnerabilitiesPlugin(BasePlugin):
 
         findings = []
         tested = 0
+        origin_states = {}
         targets = (
             discover_get_targets(response_url, page.text)
             if is_html
@@ -215,13 +216,15 @@ class WebVulnerabilitiesPlugin(BasePlugin):
                 for pattern in sql_errors.SQL_ERRORS
                 if pattern.search(baseline.text)
             }
+            endpoint_origin = _origin(endpoint)
             context = ActiveScanContext(
                 endpoint,
-                _origin(endpoint),
+                endpoint_origin,
                 baseline,
                 params,
                 request_handler.get,
-                endpoint_budget=MAX_PARAMETERS * (len(CHECKS) + 1),
+                endpoint_budget=MAX_PARAMETERS * (len(CHECKS) + 3),
+                origin_state=origin_states.setdefault(endpoint_origin, OriginState(240)),
             )
             for parameter in params:
                 if tested >= MAX_PARAMETERS:

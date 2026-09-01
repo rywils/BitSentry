@@ -5,7 +5,7 @@ from typing import Any, Callable
 
 
 @dataclass
-class _OriginState:
+class OriginState:
     budget: int
     requests: int = 0
     lock: Lock = field(default_factory=Lock)
@@ -21,7 +21,7 @@ class ActiveScanContext:
         request: Callable[..., Any],
         endpoint_budget: int = 24,
         origin_budget: int = 240,
-        origin_state: _OriginState | None = None,
+        origin_state: OriginState | None = None,
     ):
         self.endpoint = endpoint
         self.origin = origin
@@ -31,7 +31,7 @@ class ActiveScanContext:
         self._request = request
         self._endpoint_budget = endpoint_budget
         self._endpoint_requests = 0
-        self._origin_state = origin_state or _OriginState(origin_budget)
+        self._origin_state = origin_state or OriginState(origin_budget)
         self._probes: set[tuple[str, str]] = set()
         self._lock = Lock()
 
