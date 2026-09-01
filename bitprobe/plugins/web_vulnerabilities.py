@@ -7,12 +7,28 @@ from requests import Request
 from requests.exceptions import RequestException
 
 from plugins.base_plugin import BasePlugin, Finding
-from scanner.active_checks import redirects, reflected_xss, sql_errors, traversal
+from scanner.active_checks import (
+    command_injection,
+    file_inclusion,
+    redirects,
+    reflected_xss,
+    sql_errors,
+    ssti,
+    traversal,
+)
 from scanner.active_checks.context import ActiveScanContext
 
 
 MAX_PARAMETERS = 6
-CHECKS = [reflected_xss.check, sql_errors.check, traversal.check, redirects.check]
+CHECKS = [
+    reflected_xss.check,
+    sql_errors.check,
+    traversal.check,
+    redirects.check,
+    command_injection.check,
+    ssti.check,
+    file_inclusion.check,
+]
 
 
 def _add_value(values, name, value):

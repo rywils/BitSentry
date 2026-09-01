@@ -185,6 +185,43 @@ def test_detects_new_sql_error_signature_without_leaking_original_value():
     assert "secret-token" not in findings[0].evidence["payload"]
 
 
+def test_detects_command_injection_marker():
+    def responder(params):
+        if "bitsentry-cmd-" in params["cmd"]:
+            return response(params["cmd"])
+        return response("safe")
+
+    findings, _ = scan("cmd", responder)
+
+    assert [finding.title for finding in findings] == [
+        "Command Injection in parameter 'cmd'"
+    ]
+
+
+def test_detects_template_expression_evaluation():
+    def responder(params):
+        if params["template"] == "{{7*7}}":
+            return response("49")
+        return response("safe")
+
+    findings, _ = scan("template", responder)
+
+    assert [finding.title for finding in findings] == [
+        "Server-Side Template Injection in parameter 'template'"
+    ]
+
+
+def test_detects_local_file_inclusion_signature():
+    def responder(params):
+        if params["file"].startswith("php://filter"):
+            return response("cm9vdDp4")
+        return response("safe")
+
+    findings, _ = scan("file", responder)
+
+    assert any("Local File Inclusion" in finding.title for finding in findings)
+
+
 def test_existing_sql_error_is_not_reported():
     def responder(_params):
         return response("You have an error in your SQL syntax")
