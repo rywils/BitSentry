@@ -1,4 +1,5 @@
 import ipaddress
+import json
 from typing import Dict, List
 from urllib.parse import parse_qsl, urljoin, urlparse, urlunparse
 
@@ -124,6 +125,21 @@ def _origin(url):
     return scheme, host, port if port is not None else default_port
 
 
+def discover_json_targets(url: str, body: str) -> List[tuple[str, Dict]]:
+    parsed = urlparse(url)
+    query = _parameter_values(parse_qsl(parsed.query, keep_blank_values=True))
+    if not query:
+        return []
+    try:
+        payload = json.loads(body)
+    except (TypeError, json.JSONDecodeError):
+        return []
+    if not isinstance(payload, dict):
+        return []
+    endpoint = urlunparse(parsed._replace(query="", fragment=""))
+    return [(endpoint, query)]
+
+
 def discover_get_targets(url: str, html: str) -> List[tuple[str, Dict]]:
     origin = _origin(url)
     if origin is None:
@@ -171,7 +187,12 @@ class WebVulnerabilitiesPlugin(BasePlugin):
         page = url_info.get("response")
         if page is None:
             page = request_handler.get(page_url)
-        if page is None or "text/html" not in page.headers.get("Content-Type", "").lower():
+        if page is None:
+            return []
+        content_type = page.headers.get("Content-Type", "").lower()
+        is_html = "text/html" in content_type
+        is_json = "json" in content_type
+        if not is_html and not is_json:
             return []
 
         response_url = getattr(page, "url", None) or page_url
@@ -180,7 +201,12 @@ class WebVulnerabilitiesPlugin(BasePlugin):
 
         findings = []
         tested = 0
-        for endpoint, params in discover_get_targets(response_url, page.text):
+        targets = (
+            discover_get_targets(response_url, page.text)
+            if is_html
+            else discover_json_targets(response_url, page.text)
+        )
+        for endpoint, params in targets:
             baseline = request_handler.get(endpoint, params=params, allow_redirects=False)
             if baseline is None:
                 continue
