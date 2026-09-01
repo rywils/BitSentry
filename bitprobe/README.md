@@ -20,7 +20,8 @@ This repository contains the **public demonstration** of BitProbe. The full scan
 - Security header analysis
 - Sensitive file and misconfiguration detection
 - CVE correlation using a local vulnerability database
-- Safe GET-based checks for reflected XSS, SQL errors, path traversal, and open redirects
+- Safe GET-based checks for reflected XSS, SQL errors, path traversal, open redirects, command injection, template injection, and local file inclusion
+- Explicit `safe-active` profile with bounded adaptive request budgets
 - Grouped, severity-ordered findings with affected endpoint lists
 - Automated attack-chain correlation
 - Client-ready JSON, Markdown, HTML, and PDF output
