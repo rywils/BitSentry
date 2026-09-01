@@ -211,7 +211,7 @@ class WebVulnerabilitiesPlugin(BasePlugin):
             baseline = request_handler.get(endpoint, params=params, allow_redirects=False)
             if baseline is None:
                 continue
-            baseline._bitsentry_sql_errors = {
+            baseline_sql = {
                 pattern.pattern
                 for pattern in sql_errors.SQL_ERRORS
                 if pattern.search(baseline.text)
@@ -224,6 +224,7 @@ class WebVulnerabilitiesPlugin(BasePlugin):
                 params,
                 request_handler.get,
                 endpoint_budget=MAX_PARAMETERS * (len(CHECKS) + 3),
+                baseline_sql=baseline_sql,
                 origin_state=origin_states.setdefault(endpoint_origin, OriginState(240)),
             )
             for parameter in params:

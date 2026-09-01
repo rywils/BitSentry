@@ -20,6 +20,7 @@ class ActiveScanContext:
         params: dict,
         request: Callable[..., Any],
         endpoint_budget: int = 24,
+        baseline_sql: set[str] | None = None,
         origin_budget: int = 240,
         origin_state: OriginState | None = None,
     ):
@@ -27,7 +28,7 @@ class ActiveScanContext:
         self.origin = origin
         self.baseline = baseline
         self.params = params
-        self.baseline_sql = getattr(baseline, "_bitsentry_sql_errors", set())
+        self.baseline_sql = baseline_sql or set()
         self._request = request
         self._endpoint_budget = endpoint_budget
         self._endpoint_requests = 0
