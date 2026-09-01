@@ -1,3 +1,10 @@
+import sys
+from pathlib import Path
+
+_BITPROBE = Path(__file__).resolve().parents[1] / "bitprobe"
+if str(_BITPROBE) not in sys.path:
+    sys.path.insert(0, str(_BITPROBE))
+
 from scanner.active_checks.context import ActiveScanContext
 
 
