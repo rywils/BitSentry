@@ -3,40 +3,93 @@ import type { HistoryFile, HistoryRun, NormalizedFinding, SuiteReport } from "./
 
 const SEVERITIES = ["critical", "high", "medium", "low", "info"];
 
-function useJson<T>(path: string) {
-  const [data, setData] = useState<T | null>(null);
+function useReportData() {
+  const [report, setReport] = useState<SuiteReport | null>(null);
+  const [history, setHistory] = useState<HistoryFile | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(path)
-      .then((response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.json() as Promise<T>;
-      })
-      .then(setData)
-      .catch((reason) => setError(String(reason)));
-  }, [path]);
+    const load = async () => {
+      try {
+        const api = await fetch("/api/runs/latest");
+        if (api.ok) {
+          setReport(await api.json() as SuiteReport);
+          const historyResponse = await fetch("/api/runs");
+          if (historyResponse.ok) setHistory({ runs: await historyResponse.json() as HistoryRun[] });
+          return;
+        }
+        const local = await fetch("./report.json");
+        if (local.ok && (local.headers.get("content-type") || "").includes("json")) setReport(await local.json() as SuiteReport);
+      } catch (reason) {
+        setError(String(reason));
+      }
+    };
+    load();
+  }, []);
 
-  return { data, error };
+  return { report, history, error, reload: () => window.location.reload() };
+}
+
+function ScanLauncher({ onComplete }: { onComplete: () => void }) {
+  const [target, setTarget] = useState("");
+  const [job, setJob] = useState<{ id: string; status: string } | null>(null);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    if (!job || ["completed", "failed"].includes(job.status)) return;
+    const timer = window.setInterval(async () => {
+      const response = await fetch(`/api/scans/${job.id}`);
+      if (!response.ok) return;
+      const next = await response.json() as { id: string; status: string };
+      setJob(next);
+      if (next.status === "completed") {
+        setMessage("Scan complete");
+        onComplete();
+      } else if (next.status === "failed") setMessage("Scan failed");
+    }, 1500);
+    return () => window.clearInterval(timer);
+  }, [job, onComplete]);
+
+  const start = async () => {
+    setMessage("");
+    const response = await fetch("/api/scans", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target }) });
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) return setMessage("Start the BitSentry application server to launch scans.");
+    const data = await response.json();
+    if (!response.ok) return setMessage(data.detail || "Could not start scan");
+    setJob(data);
+    setTarget("");
+  };
+
+  return <div className="scan-launcher">
+    <span className="eyebrow">New assessment</span>
+    <div className="scan-form">
+      <input aria-label="Scan target" value={target} onChange={(event) => setTarget(event.target.value)} placeholder="example.com" disabled={!!job && !["completed", "failed"].includes(job.status)} />
+      <button onClick={start} disabled={!target.trim() || (!!job && !["completed", "failed"].includes(job.status))}>Start scan</button>
+    </div>
+    {job && <span className="scan-status">{job.status} {job.status === "running" ? "· scanning target" : ""}</span>}
+    {message && <span className="scan-status">{message}</span>}
+  </div>;
 }
 
 function historyLabel(run: HistoryRun, index: number) {
   return run.generated_at?.slice(0, 10) || run.run_id?.slice(0, 8) || `run ${index + 1}`;
 }
 
-function Header({ report }: { report: SuiteReport }) {
+function Header({ report, onScanComplete }: { report?: SuiteReport; onScanComplete: () => void }) {
   return (
     <header className="masthead">
       <div className="brand-lockup">
         <span className="eyebrow">BitSentry / exposure register</span>
         <h1>Know what can break.</h1>
-        <p>{report.target || report.title || "Security assessment"}</p>
+        <p>{report?.target || report?.title || "Local security assessment"}</p>
       </div>
       <div className="run-stamp">
         <span>Latest run</span>
-        <strong>{report.generated_at || "—"}</strong>
-        <code>{report.run_id?.slice(0, 12) || "unidentified"}</code>
+        <strong>{report?.generated_at || "No completed runs"}</strong>
+        <code>{report?.run_id?.slice(0, 12) || "ready"}</code>
       </div>
+      <ScanLauncher onComplete={onScanComplete} />
     </header>
   );
 }
@@ -167,24 +220,22 @@ function History({ history }: { history: HistoryFile }) {
 }
 
 function ErrorView({ error }: { error: string }) {
-  return <main className="message"><span className="eyebrow">Report unavailable</span><h1>{error}</h1><p>Serve this directory over HTTP so the dashboard can read report.json.</p></main>;
+  return <main className="message"><span className="eyebrow">Application error</span><h1>{error}</h1><p>Start the BitSentry web application and try again.</p></main>;
 }
 
 export default function App() {
-  const report = useJson<SuiteReport>("./report.json");
-  const history = useJson<HistoryFile>("./history.json");
-  if (report.error) return <ErrorView error={report.error} />;
-  if (!report.data) return <main className="message"><span className="eyebrow">BitSentry</span><h1>Reading the register.</h1></main>;
+  const { report, history, error, reload } = useReportData();
+  if (error) return <ErrorView error={error} />;
 
   return (
     <div className="app-shell">
-      <Header report={report.data} />
-      <main>
-        <RiskRail report={report.data} />
-        <div className="overview-grid"><SeveritySummary report={report.data} />{history.data && <History history={history.data} />}</div>
-        <FindingsRegister findings={report.data.findings || []} />
-      </main>
-      <footer>Generated by BitSentry <span>·</span> {report.data.bitreport_schema_version || "report schema"}</footer>
+      <Header report={report || undefined} onScanComplete={reload} />
+      {!report ? <main className="message"><span className="eyebrow">BitSentry</span><h1>Ready for an assessment.</h1><p>Launch a scan above to populate the exposure register.</p></main> : <main>
+        <RiskRail report={report} />
+        <div className="overview-grid"><SeveritySummary report={report} />{history && <History history={history} />}</div>
+        <FindingsRegister findings={report.findings || []} />
+      </main>}
+      <footer>BitSentry local application <span>·</span> {report?.bitreport_schema_version || "ready"}</footer>
     </div>
   );
 }
