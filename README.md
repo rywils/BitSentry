@@ -106,6 +106,18 @@ python bitsentry.py bitprobe scan https://example.com
 - apex and `www` are treated as same site during crawl scope
 - redundant `www.<apex>` follow-on targets are avoided in suite scans
 
+### Web application
+
+Run the local application to launch scans and view reports, history, findings, and dashboards:
+
+```bash
+python -m bitreport.api
+```
+
+Open `http://127.0.0.1:8765`.
+Runs are stored in `./runs` by default.
+Set `BITSENTRY_RUNS_DIR` to use another local directory.
+
 ## Installer details
 
 The installer:
