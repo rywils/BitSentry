@@ -272,6 +272,8 @@ class ScanEngine:
         """
         plugin_name = plugin.get_name()
         try:
+            if url_info.get("response") is None:
+                return (plugin_name, [], None)
             if self.verbose:
                 self.console.info(f"[VERBOSE] Running plugin '{plugin_name}' on {url_info['url']}")
             logger.debug(f"Running plugin {plugin_name} on {url_info['url']}")
