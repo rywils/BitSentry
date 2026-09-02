@@ -95,6 +95,7 @@ def test_probe_script_is_present_and_does_not_include_a_payload():
     assert "innerHTML" in DOM_PROBE_SCRIPT
     assert "outerHTML" in DOM_PROBE_SCRIPT
     assert "insertAdjacentHTML" in DOM_PROBE_SCRIPT
+    assert "WebSockets are disabled" in DOM_PROBE_SCRIPT
 
 
 def _missing_playwright_import(name, *args, **kwargs):

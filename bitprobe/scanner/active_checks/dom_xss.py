@@ -15,6 +15,12 @@ _missing_notice_shown = False
 
 DOM_PROBE_SCRIPT = r"""
 (() => {
+  const OriginalWebSocket = window.WebSocket;
+  window.WebSocket = function() {
+    throw new DOMException("WebSockets are disabled during safe scanning", "SecurityError");
+  };
+  window.WebSocket.prototype = OriginalWebSocket.prototype;
+
   const queryToken = "__QUERY_TOKEN__";
   const fragmentToken = "__FRAGMENT_TOKEN__";
   const events = [];
@@ -143,7 +149,10 @@ def scan_dom(url: str, timeout_ms: int = 10000) -> list[Finding]:
     try:
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=True)
-            context = browser.new_context(ignore_https_errors=False)
+            context = browser.new_context(
+                ignore_https_errors=False,
+                service_workers="block",
+            )
             page = context.new_page()
 
             def route_handler(route):
@@ -153,7 +162,7 @@ def scan_dom(url: str, timeout_ms: int = 10000) -> list[Finding]:
                 else:
                     route.abort()
 
-            page.route("**/*", route_handler)
+            context.route("**/*", route_handler)
             page.add_init_script(script)
             page.goto(probe_url, timeout=timeout_ms, wait_until="domcontentloaded")
             events = page.evaluate("window.__bitsentry_dom_events || []")
