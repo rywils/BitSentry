@@ -9,6 +9,7 @@ from plugins.web_vulnerabilities import (
     discover_json_targets,
 )
 from scanner.crawler import Crawler
+from plugins.base_plugin import Finding
 
 
 def response(body="<html></html>", status=200, headers=None):
@@ -42,6 +43,20 @@ def scan(parameter, responder, page_html="<html></html>", value="safe", page_hea
         handler,
     )
     return findings, handler
+
+
+def test_runs_dom_check_for_html_pages(monkeypatch):
+    finding = Finding(
+        "web_vulnerabilities", "high", "DOM-based XSS", "", "https://example.test/"
+    )
+    monkeypatch.setattr(
+        "plugins.web_vulnerabilities.dom_xss.scan_dom",
+        lambda url: [finding],
+    )
+
+    findings, _ = scan("q", lambda _params: response())
+
+    assert findings == [finding]
 
 
 def test_discovers_json_get_parameters_without_body_keys():

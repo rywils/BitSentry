@@ -1,0 +1,2 @@
+# Optional browser-backed checks for JavaScript-driven DOM vulnerabilities
+playwright>=1.40

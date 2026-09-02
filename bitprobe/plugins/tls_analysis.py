@@ -75,9 +75,33 @@ class TLSAnalysisPlugin(BasePlugin):
             f"{cipher[0]} ({cipher[2]}-bit)."
         )
 
-        if reasons:
-            description += " " + " ".join(reasons)
+        evidence = {
+            "port": port,
+            "protocol": protocol,
+            "cipher": cipher,
+            "not_after": not_after_str,
+            "days_until_expiry": days_left,
+            "subject": subject,
+            "issuer": issuer,
+        }
+        if not reasons:
+            return [
+                Finding(
+                    plugin_name=self.get_name(),
+                    severity="info",
+                    title=f"TLS Configuration on Port {port}",
+                    description=(
+                        description + " This is a healthy configuration observation, "
+                        "not a vulnerability."
+                    ),
+                    url=f"{host}:{port}",
+                    evidence=evidence,
+                    remediation="No action required based on this TLS observation.",
+                    metadata={"classification": "warning"},
+                )
+            ]
 
+        description += " " + " ".join(reasons)
         findings.append(
             Finding(
                 plugin_name=self.get_name(),
@@ -85,15 +109,7 @@ class TLSAnalysisPlugin(BasePlugin):
                 title=f"TLS Configuration on Port {port}",
                 description=description,
                 url=f"{host}:{port}",
-                evidence={
-                    "port": port,
-                    "protocol": protocol,
-                    "cipher": cipher,
-                    "not_after": not_after_str,
-                    "days_until_expiry": days_left,
-                    "subject": subject,
-                    "issuer": issuer,
-                },
+                evidence=evidence,
                 remediation=(
                     "Renew certificates before expiration and ensure only modern TLS "
                     "protocols and strong ciphers are enabled."
