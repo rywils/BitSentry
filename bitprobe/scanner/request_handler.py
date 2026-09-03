@@ -19,6 +19,61 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 
+# Header names that must never survive a redirect to a different host, on top of
+# any operator-supplied ``-H`` headers (which may themselves be API keys).
+_ALWAYS_SENSITIVE_HEADERS = {
+    "authorization",
+    "proxy-authorization",
+    "cookie",
+    "x-api-key",
+    "x-api-token",
+    "x-apikey",
+    "api-key",
+    "apikey",
+    "x-auth-token",
+    "auth-token",
+    "x-access-token",
+    "x-csrf-token",
+    "x-xsrf-token",
+    "x-session-token",
+}
+
+
+class _RedirectSafeSession(requests.Session):
+    """
+    A session that strips credentials when a redirect crosses to another host.
+
+    ``requests`` already drops ``Authorization`` on a hostname change, but not
+    the cookie jar (session cookies are stored domain-less and are otherwise
+    sent everywhere) or arbitrary secret headers. A scan target that returns a
+    cross-host 3xx could otherwise exfiltrate the operator's session cookie or
+    API keys to an attacker-controlled URL.
+    """
+
+    def __init__(self, sensitive_headers=None):
+        super().__init__()
+        self._sensitive_headers = _ALWAYS_SENSITIVE_HEADERS | {
+            str(name).lower() for name in (sensitive_headers or ())
+        }
+
+    def rebuild_auth(self, prepared_request, response):
+        super().rebuild_auth(prepared_request, response)
+        try:
+            source_host = urlparse(response.request.url).hostname
+            target_host = urlparse(prepared_request.url).hostname
+        except ValueError:
+            source_host = target_host = None
+
+        if source_host and target_host and source_host != target_host:
+            headers = prepared_request.headers
+            for name in list(headers.keys()):
+                if name.lower() in self._sensitive_headers:
+                    del headers[name]
+            if getattr(prepared_request, "_cookies", None) is not None:
+                prepared_request._cookies.clear()
+                prepared_request.prepare_cookies(prepared_request._cookies)
+
+
 class RequestHandler:
     """
     Enhanced HTTP request handler with retry logic, connection pooling,
@@ -64,8 +119,12 @@ class RequestHandler:
         self.last_request_time = 0
         self._rate_limit_lock = threading.Lock()
         
-        # Create session with connection pooling
-        self.session = requests.Session()
+        # Create session with connection pooling. The redirect-safe session
+        # drops the cookie jar and any operator-supplied secret headers when a
+        # redirect crosses to a different host.
+        self.session = _RedirectSafeSession(
+            sensitive_headers=list((headers or {}).keys())
+        )
         
         # Configure retry strategy
         retry_strategy = Retry(

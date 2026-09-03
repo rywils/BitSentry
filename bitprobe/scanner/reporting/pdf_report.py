@@ -57,6 +57,7 @@ class PDFReportGenerator:
         normalized_risk = risk.get("normalized_score", 0)
         vuln_total = stats.get('total_findings', 0)
         warning_total = stats.get('warning_findings', 0)
+        info_total = stats.get('informational_findings', 0)
         edge_total = stats.get('edge_infrastructure_findings', 0)
 
         # COVER
@@ -115,7 +116,14 @@ class PDFReportGenerator:
         if warning_total > 0:
             elements.append(
                 Paragraph(
-                    f"Warnings: {warning_total} (not counted as vulnerabilities)",
+                    f"Hardening / Warnings: {warning_total} (not counted as vulnerabilities)",
+                    self.styles["Normal"],
+                )
+            )
+        if info_total > 0:
+            elements.append(
+                Paragraph(
+                    f"Informational: {info_total} (not counted as vulnerabilities)",
                     self.styles["Normal"],
                 )
             )
@@ -144,12 +152,20 @@ class PDFReportGenerator:
         findings = self.report_data.get("findings", [])
         warning_findings = [
             f for f in findings
-            if f.get("metadata", {}).get("classification") == "warning"
+            if not f.get("edge_infrastructure")
+            and f.get("metadata", {}).get("classification") == "warning"
+        ]
+        info_findings = [
+            f for f in findings
+            if not f.get("edge_infrastructure")
+            and f.get("metadata", {}).get("classification") != "warning"
+            and f.get("severity") == "info"
         ]
         vuln_findings = [
             f for f in findings
             if not f.get("edge_infrastructure")
             and f.get("metadata", {}).get("classification") != "warning"
+            and f.get("severity") != "info"
         ]
         edge_findings = [f for f in findings if f.get("edge_infrastructure")]
 
@@ -252,6 +268,24 @@ class PDFReportGenerator:
                 )
             )
             for idx, finding in enumerate(warning_findings, 1):
+                elements.append(Paragraph(f"{idx}. {finding['title']}", self.styles["Heading2"]))
+                elements.append(Paragraph(finding.get("description", ""), self.styles["Normal"]))
+                elements.append(Paragraph(f"Evidence: {finding.get('evidence', {})}", self.styles["Normal"]))
+                elements.append(Spacer(1, 0.1 * inch))
+
+        # INFORMATIONAL
+        if info_findings:
+            elements.append(Paragraph("Informational Findings", self.styles["Heading1"]))
+            elements.append(Spacer(1, 0.1 * inch))
+            elements.append(
+                Paragraph(
+                    "Context gathered during the scan (technology fingerprints, service "
+                    "banners, and similar observations). These are not vulnerabilities and "
+                    "are not counted or scored.",
+                    self.styles["Normal"],
+                )
+            )
+            for idx, finding in enumerate(info_findings, 1):
                 elements.append(Paragraph(f"{idx}. {finding['title']}", self.styles["Heading2"]))
                 elements.append(Paragraph(finding.get("description", ""), self.styles["Normal"]))
                 elements.append(Paragraph(f"Evidence: {finding.get('evidence', {})}", self.styles["Normal"]))
