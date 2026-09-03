@@ -14,9 +14,46 @@ import sys
 
 from scanner.engine import ScanEngine
 from scanner.config import ScanConfig, SCAN_PROFILES
+from scanner.auth import parse_cookie_string, parse_header_lines
 from scanner.asn_db_updater import update_asn_db
 from scanner.cve_db_manager import update_cve_database, update_kev_epss, get_stats
 from scanner.cve_db_bootstrap import update_with_snapshot_policy
+
+
+def _apply_auth_args(args, config_kwargs: dict) -> None:
+    """Translate --auth-* / -H flags into ScanConfig auth kwargs."""
+    bearer = getattr(args, "auth_bearer", None)
+    basic = getattr(args, "auth_basic", None)
+    cookie = getattr(args, "auth_cookie", None)
+
+    if bearer:
+        config_kwargs["auth"] = {"type": "bearer", "credentials": {"token": bearer}}
+    elif basic and ":" in basic:
+        user, _, password = basic.partition(":")
+        config_kwargs["auth"] = {
+            "type": "basic",
+            "credentials": {"username": user, "password": password},
+        }
+    if cookie:
+        config_kwargs["cookies"] = parse_cookie_string(cookie)
+
+    b_bearer = getattr(args, "auth_b_bearer", None)
+    b_cookie = getattr(args, "auth_b_cookie", None)
+    if b_bearer:
+        config_kwargs["auth_secondary"] = {
+            "type": "bearer",
+            "credentials": {"token": b_bearer},
+        }
+    elif b_cookie:
+        config_kwargs["auth_secondary"] = {
+            "type": "cookie",
+            "credentials": {},
+            "cookies": parse_cookie_string(b_cookie),
+        }
+
+    headers = parse_header_lines(getattr(args, "headers", None))
+    if headers:
+        config_kwargs["extra_headers"] = headers
 
 
 def cmd_scan(args) -> int:
@@ -57,6 +94,8 @@ def cmd_scan(args) -> int:
         ]
     if getattr(args, "output_dir", None):
         config_kwargs["output_dir"] = str(args.output_dir).strip()
+
+    _apply_auth_args(args, config_kwargs)
 
     config = ScanConfig(**config_kwargs)
     engine = ScanEngine(config)
@@ -164,6 +203,41 @@ Examples:
         "-v", "--verbose",
         action="store_true",
         help="Enable verbose output - show every URL, plugin execution, and check",
+    )
+    auth_group = scan_parser.add_argument_group("authentication")
+    auth_group.add_argument(
+        "--auth-bearer",
+        metavar="TOKEN",
+        help="Send 'Authorization: Bearer TOKEN' on every request (primary identity)",
+    )
+    auth_group.add_argument(
+        "--auth-basic",
+        metavar="USER:PASS",
+        help="HTTP Basic auth for the primary identity",
+    )
+    auth_group.add_argument(
+        "--auth-cookie",
+        metavar="COOKIES",
+        help='Cookie string for the primary identity, e.g. "session=abc; csrf=xyz"',
+    )
+    auth_group.add_argument(
+        "--auth-b-bearer",
+        metavar="TOKEN",
+        dest="auth_b_bearer",
+        help="Bearer token for a SECOND identity, enabling two-identity IDOR checks",
+    )
+    auth_group.add_argument(
+        "--auth-b-cookie",
+        metavar="COOKIES",
+        dest="auth_b_cookie",
+        help="Cookie string for the second identity",
+    )
+    auth_group.add_argument(
+        "-H", "--header",
+        action="append",
+        dest="headers",
+        metavar="'K: V'",
+        help="Extra header on every request (repeatable)",
     )
 
     asn_db_parser = subparsers.add_parser(

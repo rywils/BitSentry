@@ -1,5 +1,5 @@
 from scanner.config import ScanConfig
-from scanner.request_handler import RequestHandler
+from scanner.auth import build_handler
 from scanner.crawler import Crawler
 from scanner.analysis.attack_chain_engine import build_attack_chains
 from scanner.analysis.findings import group_findings
@@ -134,6 +134,7 @@ class ColoredConsole:
         risk = stats.get("risk", {})
         vuln_total = stats.get('total_findings', 0)
         warning_total = stats.get('warning_findings', 0)
+        info_total = stats.get('informational_findings', 0)
         edge_total = stats.get('edge_infrastructure_findings', 0)
         total_with_edge = stats.get('total_findings_with_edge', vuln_total + edge_total)
         
@@ -170,15 +171,22 @@ class ColoredConsole:
             
             self.rich_console.print(sev_table)
             
+            if info_total > 0:
+                self.rich_console.print(
+                    f"\nInformational Findings: {info_total}  "
+                    f"(listed for awareness — not counted as vulnerabilities)",
+                    style="dim"
+                )
             if edge_total > 0:
                 self.rich_console.print(
-                    f"\nEdge Infrastructure Findings: {edge_total}  "
+                    f"Edge Infrastructure Findings: {edge_total}  "
                     f"(included as INFO — not counted as vulnerabilities)",
                     style="dim"
                 )
             self.rich_console.print(
                 f"\nTotal Vulnerabilities: {vuln_total}  "
-                f"(+ {warning_total} warnings, {edge_total} edge infrastructure)",
+                f"(+ {warning_total} hardening/warnings, {info_total} informational, "
+                f"{edge_total} edge infrastructure)",
                 style="bold"
             )
         else:
@@ -202,7 +210,9 @@ class ColoredConsole:
 
             print(f"\nTotal Vulnerabilities: {vuln_total}")
             if warning_total > 0:
-                print(f"Warnings (INFO): {warning_total}  (not counted as vulnerabilities)")
+                print(f"Hardening / Warnings (INFO): {warning_total}  (not counted as vulnerabilities)")
+            if info_total > 0:
+                print(f"Informational (INFO): {info_total}  (not counted as vulnerabilities)")
             if edge_total > 0:
                 print(f"Edge Infrastructure (INFO): {edge_total}  "
                       f"(not counted as vulnerabilities)")
@@ -222,7 +232,21 @@ class ScanEngine:
     def __init__(self, config: ScanConfig):
         self.config = config
         self.verbose = getattr(config, 'verbose', False)
-        self.request_handler = RequestHandler(rate_limit=config.rate_limit, verbose=self.verbose)
+        self.request_handler = build_handler(
+            config.rate_limit,
+            self.verbose,
+            auth=getattr(config, "auth", None),
+            cookies=getattr(config, "cookies", None),
+            headers=getattr(config, "extra_headers", None),
+        )
+        secondary_auth = getattr(config, "auth_secondary", None)
+        if secondary_auth:
+            self.request_handler.secondary = build_handler(
+                config.rate_limit,
+                self.verbose,
+                auth=secondary_auth,
+                cookies=secondary_auth.get("cookies"),
+            )
         self.crawler = Crawler(
             config.target_url,
             config.depth,
@@ -241,6 +265,8 @@ class ScanEngine:
             "fingerprinting": "plugins.fingerprinting.FingerprintingPlugin",
             "security_headers": "plugins.security_headers.SecurityHeadersPlugin",
             "sensitive_files": "plugins.sensitive_files.SensitiveFilesPlugin",
+            "wordpress_scan": "plugins.wordpress_scan.WordPressScanPlugin",
+            "access_control": "plugins.access_control.AccessControlPlugin",
             "web_vulnerabilities": "plugins.web_vulnerabilities.WebVulnerabilitiesPlugin",
             "cve_correlation": "plugins.cve_correlation.CVECorrelationPlugin",
             "network_scanner": "plugins.network_scanner.NetworkScannerPlugin",
@@ -435,15 +461,27 @@ class ScanEngine:
         all_findings = prioritized["findings"]
 
         # Separate observations and edge infrastructure from vulnerabilities.
+        # Only findings with a real severity (low..critical) that are not edge
+        # infrastructure and not informational "warning" observations count as
+        # vulnerabilities. info-severity findings are still reported, just not
+        # counted or scored.
         edge_findings = [f for f in all_findings if f.get("edge_infrastructure")]
         warning_findings = [
             f for f in all_findings
-            if f.get("metadata", {}).get("classification") == "warning"
+            if not f.get("edge_infrastructure")
+            and f.get("metadata", {}).get("classification") == "warning"
+        ]
+        info_findings = [
+            f for f in all_findings
+            if not f.get("edge_infrastructure")
+            and f.get("metadata", {}).get("classification") != "warning"
+            and f.get("severity") == "info"
         ]
         vuln_findings = [
             f for f in all_findings
             if not f.get("edge_infrastructure")
             and f.get("metadata", {}).get("classification") != "warning"
+            and f.get("severity") != "info"
         ]
 
         # Edge findings are always informational-only
@@ -484,6 +522,7 @@ class ScanEngine:
                 "findings_by_severity": findings_by_severity,
                 "total_findings": len(vuln_findings),
                 "warning_findings": len(warning_findings),
+                "informational_findings": len(info_findings),
                 "edge_infrastructure_findings": len(edge_findings),
                 "total_findings_with_edge": len(all_findings),
                 "overall_risk_score": round(normalized_risk, 2),

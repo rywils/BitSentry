@@ -4,28 +4,51 @@ from plugins.base_plugin import BasePlugin, Finding
 
 
 class SecurityHeadersPlugin(BasePlugin):
+    # A missing hardening header is not, on its own, a vulnerability: it is the
+    # absence of a defense-in-depth control. Real impact requires a separate
+    # bug (an injectable sink for CSP, a framing-sensitive page for XFO, an
+    # active MITM for HSTS). These are reported as informational hardening
+    # recommendations (classification "warning") so they are listed but never
+    # counted as vulnerabilities or added to the risk score.
     REQUIRED_HEADERS = {
         "X-Frame-Options": {
-            "severity": "medium",
-            "description": "Missing X-Frame-Options header allows clickjacking attacks",
-            "remediation": 'Add "X-Frame-Options: DENY" or "X-Frame-Options: SAMEORIGIN"',
+            "severity": "low",
+            "description": (
+                "X-Frame-Options is not set. Framing-based clickjacking is only "
+                "exploitable on pages with sensitive state-changing UI and no "
+                "frame-ancestors CSP directive."
+            ),
+            "remediation": 'Add "X-Frame-Options: DENY" or "X-Frame-Options: SAMEORIGIN" (or a frame-ancestors CSP directive)',
         },
         "X-Content-Type-Options": {
-            "severity": "low",
-            "description": "Missing X-Content-Type-Options header allows MIME sniffing",
+            "severity": "info",
+            "description": (
+                "X-Content-Type-Options is not set. MIME sniffing is only a risk "
+                "where user-controlled content is served without a correct "
+                "Content-Type."
+            ),
             "remediation": 'Add "X-Content-Type-Options: nosniff"',
         },
         "Content-Security-Policy": {
-            "severity": "medium",
-            "description": "Missing Content-Security-Policy header allows injection attacks",
+            "severity": "low",
+            "description": (
+                "No Content-Security-Policy is set. CSP is a mitigation layer for "
+                "injection bugs, not a vulnerability in itself."
+            ),
             "remediation": "Implement an appropriate Content-Security-Policy",
         },
         "Strict-Transport-Security": {
-            "severity": "high",
-            "description": "Missing HSTS header allows downgrade attacks",
+            "severity": "low",
+            "description": (
+                "HSTS is not set. Downgrade/SSL-strip attacks require an active "
+                "network position; a permanent HTTPS redirect limits exposure."
+            ),
             "remediation": 'Add "Strict-Transport-Security: max-age=31536000; includeSubDomains"',
         },
     }
+
+    # Marks every finding as an informational hardening recommendation.
+    _HARDENING_METADATA = {"classification": "warning", "category": "hardening"}
 
     def get_name(self) -> str:
         return "security_headers"
@@ -73,6 +96,7 @@ class SecurityHeadersPlugin(BasePlugin):
                         url=url,
                         evidence={"missing_header": header},
                         remediation=info["remediation"],
+                        metadata=dict(self._HARDENING_METADATA),
                     )
                 )
             else:
@@ -88,12 +112,13 @@ class SecurityHeadersPlugin(BasePlugin):
                 findings.append(
                     Finding(
                         plugin_name=self.get_name(),
-                        severity="medium",
+                        severity="low",
                         title="Weak X-Frame-Options Configuration",
                         description=f"X-Frame-Options is set to '{headers['X-Frame-Options']}'",
                         url=url,
                         evidence={"header_value": headers["X-Frame-Options"]},
                         remediation='Set X-Frame-Options to "DENY" or "SAMEORIGIN"',
+                        metadata=dict(self._HARDENING_METADATA),
                     )
                 )
 

@@ -32,7 +32,9 @@ SCAN_PROFILES = {
             "security_headers",
             "tls_analysis",
             "sensitive_files",
+            "wordpress_scan",
             "web_vulnerabilities",
+            "access_control",
             "cve_correlation",
         ],
     },
@@ -49,7 +51,9 @@ SCAN_PROFILES = {
             "security_headers",
             "tls_analysis",
             "sensitive_files",
+            "wordpress_scan",
             "web_vulnerabilities",
+            "access_control",
             "cve_correlation",
         ],
     },
@@ -66,7 +70,9 @@ SCAN_PROFILES = {
             "security_headers",
             "tls_analysis",
             "sensitive_files",
+            "wordpress_scan",
             "web_vulnerabilities",
+            "access_control",
             "cve_correlation",
             "network_scanner",
             "infrastructure",
@@ -111,9 +117,21 @@ class ScanConfig:
         profile: Optional[str] = None,
         verbose: bool = False,
         active_scan_mode: str = "safe",
+        auth: Optional[Dict[str, Any]] = None,
+        auth_secondary: Optional[Dict[str, Any]] = None,
+        cookies: Optional[Dict[str, str]] = None,
+        extra_headers: Optional[Dict[str, str]] = None,
     ):
         # Apply profile settings first, then override with explicit parameters
         profile_config = self._get_profile_config(profile)
+
+        # Authentication / session context (see scanner.auth).
+        # ``auth`` is the primary identity; ``auth_secondary`` is an optional
+        # lower-or-equal privilege identity used for two-identity IDOR checks.
+        self.auth = auth
+        self.auth_secondary = auth_secondary
+        self.cookies = cookies
+        self.extra_headers = extra_headers
         
         self.target_url = self._normalize_target_url(target_url)
         self.depth = depth if profile is None else profile_config.get("depth", depth)
@@ -136,6 +154,7 @@ class ScanConfig:
                 "fingerprinting",
                 "security_headers",
                 "sensitive_files",
+                "wordpress_scan",
                 "web_vulnerabilities",
                 "cve_correlation",
                 "network_scanner",
@@ -147,6 +166,7 @@ class ScanConfig:
                 "fingerprinting",
                 "security_headers",
                 "sensitive_files",
+                "wordpress_scan",
                 "web_vulnerabilities",
                 "cve_correlation",
                 "network_scanner",

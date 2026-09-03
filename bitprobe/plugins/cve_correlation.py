@@ -68,7 +68,18 @@ class CVECorrelationPlugin(BasePlugin):
                 "category": "language",
                 "version": None,
             })
-        
+
+        # Operating system: only correlate when a concrete version was seen.
+        # Name-only OS matching floods results with irrelevant kernel/distro
+        # CVEs, so it is deliberately skipped here.
+        os_info = tech.get("os") or {}
+        if os_info.get("version"):
+            technologies.append({
+                "name": os_info.get("name"),
+                "category": "os",
+                "version": os_info.get("version"),
+            })
+
         return technologies
 
     def _generate_contextual_guidance(self, tech_name: str, cve_id: str) -> Dict[str, str]:
