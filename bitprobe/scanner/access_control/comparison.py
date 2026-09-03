@@ -48,6 +48,7 @@ class ResponseFacts:
 
 
 def _json_shape(text: str) -> Optional[str]:
+    """Structural signature of a JSON body (key names + value types, no values)."""
     try:
         data = json.loads(text)
     except (ValueError, TypeError):
@@ -66,12 +67,14 @@ def _json_shape(text: str) -> Optional[str]:
 
 
 def _html_shape(text: str) -> str:
+    """Hash of the opening-tag sequence — a cheap structural fingerprint for HTML."""
     tags = re.findall(r"<([a-zA-Z][a-zA-Z0-9]*)", text or "")
     skeleton = ">".join(tag.lower() for tag in tags[:120])
     return "html:" + hashlib.sha1(skeleton.encode("utf-8", "ignore")).hexdigest()
 
 
 def summarize(response) -> Optional[ResponseFacts]:
+    """Reduce an HTTP response to the facts the verdict functions compare."""
     if response is None:
         return None
     text = response.text or ""
@@ -99,6 +102,11 @@ def idor_verdict(
     *,
     principal: str,
 ) -> Optional[dict]:
+    """
+    Weak signal for the single-identity heuristic: the same session got a
+    different-but-same-shaped object for a mutated identifier. Cannot prove
+    cross-user access, so callers report it as informational only.
+    """
     if baseline is None or mutated is None:
         return None
     if baseline.status != 200 or baseline.denied:
@@ -122,4 +130,48 @@ def idor_verdict(
         "mutated_status": mutated.status,
         "mutated_length": mutated.length,
         "mutated_sample": mutated.sample,
+    }
+
+
+def direct_access_verdict(
+    baseline: Optional[ResponseFacts],
+    weaker: Optional[ResponseFacts],
+    *,
+    principal: str,
+) -> Optional[dict]:
+    """
+    Decide whether a weaker principal (a second identity, or an anonymous
+    client) could read the *authorized baseline object itself*.
+
+    This is the only sound confirmation of IDOR: the baseline is the primary
+    identity's object at its own URL, and ``weaker`` is the response the lower
+    -privilege principal got for that same URL. A different-object comparison
+    (mutated identifier) cannot distinguish "read someone else's record" from
+    "read my own record", so it is not used here.
+    """
+    if baseline is None or weaker is None:
+        return None
+    if baseline.status != 200 or baseline.denied:
+        return None
+    if weaker.status != 200 or weaker.denied or weaker.notfound:
+        return None
+    if weaker.shape != baseline.shape or baseline.length == 0:
+        return None
+
+    identical = weaker.body_hash == baseline.body_hash
+    near = (
+        baseline.length > 50
+        and abs(weaker.length - baseline.length) <= 0.1 * baseline.length
+    )
+    if not (identical or near):
+        return None
+
+    return {
+        "severity": PRINCIPAL_SEVERITY.get(principal, "medium"),
+        "principal": principal,
+        "baseline_shape": baseline.shape[:80],
+        "match": "identical" if identical else "near-identical",
+        "mutated_status": weaker.status,
+        "mutated_length": weaker.length,
+        "mutated_sample": weaker.sample,
     }

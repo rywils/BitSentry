@@ -48,6 +48,7 @@ class IdLocation:
 
 
 def classify_value(value: str) -> Optional[str]:
+    """Return "numeric" | "uuid" | "oid" for id-shaped values, else None."""
     value = str(value).strip()
     if _UUID_RE.fullmatch(value):
         return "uuid"
@@ -59,6 +60,7 @@ def classify_value(value: str) -> Optional[str]:
 
 
 def _query_pairs(url: str, params) -> List[Tuple[str, str]]:
+    """(name, value) pairs from an explicit params mapping, or the URL's query."""
     if params:
         pairs: List[Tuple[str, str]] = []
         for name, value in params.items():
@@ -74,6 +76,7 @@ def _query_pairs(url: str, params) -> List[Tuple[str, str]]:
 
 
 def find_id_locations(url: str, params=None) -> List[IdLocation]:
+    """Object-reference identifiers in a URL's query params and path segments."""
     locations: List[IdLocation] = []
 
     for name, value in _query_pairs(url, params):

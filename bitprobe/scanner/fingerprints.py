@@ -302,10 +302,12 @@ def _merge_tech(items: List[Dict], entry: Dict) -> None:
 
 
 def _lib_from_segment(segment: str) -> Optional[str]:
+    """Canonical library name for a path/filename segment, or None."""
     return _LIB_ALIASES.get(segment.lower().strip())
 
 
 def _asset_urls(html: str) -> List[str]:
+    """All ``src=``/``href=`` URLs in the HTML (attribute-order agnostic)."""
     if not html:
         return []
     return re.findall(r"""(?:src|href)\s*=\s*["']([^"'>\s]+)["']""", html, re.I)
@@ -354,13 +356,29 @@ def extract_asset_versions(html: str) -> List[Dict]:
                 rf"^(?P<name>@?[a-zA-Z][\w.\-/]*?)@(?P<ver>{_VERSION_RE})$", seg
             )
             if at_ver:
-                lib = _lib_from_segment(at_ver.group("name"))
+                name = at_ver.group("name")
+                # ``/npm/@popperjs/core@2.11.8/`` splits into "@popperjs" and
+                # "core@2.11.8" — rejoin the scope so scoped aliases resolve.
+                if (
+                    "/" not in name
+                    and index > 0
+                    and segments[index - 1].startswith("@")
+                ):
+                    name = f"{segments[index - 1]}/{name}"
+                lib = _lib_from_segment(name)
                 if lib:
                     candidates.append((lib, _clean_version(at_ver.group("ver")), url))
             elif re.fullmatch(_VERSION_RE, seg) and index > 0:
                 prev = segments[index - 1]
-                lib = _lib_from_segment(prev) or _lib_from_segment(
-                    re.split(r"[.\-@]", prev)[0]
+                scoped = (
+                    f"{segments[index - 2]}/{prev}"
+                    if index > 1 and segments[index - 2].startswith("@")
+                    else None
+                )
+                lib = (
+                    (_lib_from_segment(scoped) if scoped else None)
+                    or _lib_from_segment(prev)
+                    or _lib_from_segment(re.split(r"[.\-@]", prev)[0])
                 )
                 if lib:
                     candidates.append((lib, _clean_version(seg), url))
@@ -414,6 +432,7 @@ def detect_os(response) -> Optional[Dict]:
 
 
 def _apply_generator_headers(response, tech: Dict, sources: Dict) -> None:
+    """Fold ``X-Generator`` / ``X-AspNet-Version`` into the detected-tech buckets."""
     generator = str(response.headers.get("X-Generator", ""))
     if generator:
         match = re.match(

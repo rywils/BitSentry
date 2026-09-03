@@ -129,6 +129,20 @@ def test_library_version_from_ver_query_string():
     assert libs.get("Bootstrap") == "5.3.2"
 
 
+def test_scoped_npm_package_version_is_resolved():
+    detected = fingerprint_technologies(
+        make_response(
+            body=(
+                b'<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/'
+                b'dist/umd/popper.min.js"></script>'
+            )
+        )
+    )
+
+    libs = {item["name"]: item.get("version") for item in detected["_detailed"]["js_libraries"]}
+    assert libs.get("Popper.js") == "2.11.8"
+
+
 def test_library_version_from_cdn_at_version_path():
     detected = fingerprint_technologies(
         make_response(

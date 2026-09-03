@@ -111,7 +111,9 @@ def _object_router(owner_body, other_body):
     return get
 
 
-def test_scan_url_for_idor_flags_secondary_access():
+def test_scan_url_for_idor_flags_secondary_reading_primary_object():
+    # The secondary identity requests the primary's own baseline URL and gets
+    # back the primary's object -> confirmed IDOR.
     owner = json.dumps({"id": 5, "email": "me@x.test"})
     other = json.dumps({"id": 4, "email": "victim@x.test"})
     ctx = AccessControlContext(
@@ -125,6 +127,37 @@ def test_scan_url_for_idor_flags_secondary_access():
     assert results[0]["parameter"] == "id"
     assert results[0]["principal"] == "secondary"
     assert results[0]["severity"] == "high"
+
+
+def test_secondary_own_object_is_not_a_finding():
+    # If the weaker principal is denied the primary's baseline object, there is
+    # no IDOR — even though a mutated identifier would have returned a 200.
+    owner = json.dumps({"id": 5, "email": "me@x.test"})
+
+    def primary(url):
+        return Resp(200, owner)
+
+    def secondary(url):
+        return Resp(403, json.dumps({"error": "forbidden"}))
+
+    ctx = AccessControlContext(primary_get=primary, secondary_get=secondary)
+
+    assert scan_url_for_idor(ctx, "https://x.test/api/account?id=5") == []
+
+
+def test_scan_url_for_idor_merges_separate_params():
+    owner = json.dumps({"id": 5, "email": "me@x.test"})
+    ctx = AccessControlContext(
+        primary_get=lambda url: Resp(200, owner),
+        secondary_get=lambda url: Resp(200, owner),
+    )
+
+    results = scan_url_for_idor(
+        ctx, "https://x.test/api/account", params={"id": "5"}
+    )
+
+    assert len(results) == 1
+    assert results[0]["principal"] == "secondary"
 
 
 def test_scan_url_for_idor_respects_budget():

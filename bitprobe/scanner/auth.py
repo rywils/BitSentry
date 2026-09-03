@@ -55,6 +55,7 @@ def build_handler(
     headers: Optional[Dict[str, str]] = None,
     verify_ssl: bool = True,
 ) -> RequestHandler:
+    """Build a ``RequestHandler`` and tag it with ``.authenticated`` / ``.secondary``."""
     handler = RequestHandler(
         rate_limit=rate_limit,
         verbose=verbose,
@@ -64,8 +65,10 @@ def build_handler(
         verify_ssl=verify_ssl,
     )
     # Marked here so plugins can tell an authenticated session from an anonymous
-    # one without inspecting the requests session internals.
-    handler.authenticated = bool(auth or cookies or headers)
+    # one without inspecting the requests session internals. Only real
+    # credentials or a session cookie count — arbitrary ``-H`` headers (tracing,
+    # user-agent overrides, etc.) do not make a session authenticated.
+    handler.authenticated = bool(auth or cookies)
     handler.secondary = None
     return handler
 
@@ -75,15 +78,23 @@ def login_via_form(
     login_url: str,
     data,
     *,
-    success_indicator: Optional[str] = None,
+    success_indicator: str,
     method: str = "POST",
 ) -> bool:
     """
     Submit a login form on ``handler``'s session and report whether it worked.
 
+    ``success_indicator`` is required: a bare HTTP 200 is not proof of login
+    (a login page re-rendered with an error is also 200), and wrongly flagging
+    the session as authenticated would pick the wrong principal in
+    access-control checks. Pass a substring that only appears once logged in
+    (a username, a "Sign out" link, a dashboard heading).
+
     Session cookies set by the response persist on the handler for the rest of
     the scan.
     """
+    if not success_indicator:
+        raise ValueError("login_via_form requires a non-empty success_indicator")
     payload = form_data(data)
     if method.upper() == "POST":
         response = handler.post(login_url, data=payload, allow_redirects=True)
@@ -91,10 +102,7 @@ def login_via_form(
         response = handler.get(login_url, params=payload, allow_redirects=True)
     if response is None:
         return False
-    if success_indicator:
-        ok = success_indicator.lower() in (response.text or "").lower()
-    else:
-        ok = response.status_code in (200, 302)
+    ok = success_indicator.lower() in (response.text or "").lower()
     if ok:
         handler.authenticated = True
     return ok

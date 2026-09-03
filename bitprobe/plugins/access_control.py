@@ -35,6 +35,7 @@ class AccessControlPlugin(BasePlugin):
         return "Object-level authorization (IDOR / BOLA) checks on identifier parameters"
 
     def _get_context(self, request_handler) -> AccessControlContext:
+        """Build (once, lazily) the budget-shared context for this scan run."""
         with self._lock:
             if self._context is not None:
                 return self._context
@@ -64,6 +65,7 @@ class AccessControlPlugin(BasePlugin):
             return self._context
 
     def scan(self, url_info: Dict, request_handler) -> List[Finding]:
+        """Run IDOR/BOLA checks for one crawled URL and return any findings."""
         url = url_info["url"]
         page = url_info.get("response")
         page_text = getattr(page, "text", "") or ""
@@ -75,6 +77,7 @@ class AccessControlPlugin(BasePlugin):
         return [self._to_finding(url, result) for result in results]
 
     def _to_finding(self, url: str, result: Dict) -> Finding:
+        """Turn an engine verdict dict into a ``Finding`` (confirmed vs heuristic)."""
         principal = result["principal"]
         parameter = result["parameter"]
         original = result["original_value"]

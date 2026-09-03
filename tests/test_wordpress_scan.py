@@ -49,6 +49,30 @@ def test_is_wordpress_positive_and_negative():
     assert not is_wordpress("<html>plain site</html>", {})
 
 
+def test_is_wordpress_matches_lowercase_header_names():
+    assert is_wordpress("", {"x-pingback": "https://x.test/xmlrpc.php"})
+    assert is_wordpress("", {"link": "<https://x.test/wp-json/>; rel=\"https://api.w.org/\""})
+
+
+def test_enumerate_preserves_subdirectory_base_path():
+    handler = FakeHandler(
+        {
+            "/blog/readme.html": FakeResp(200, "<h1>WordPress<br /> Version 6.5</h1>"),
+            "/blog/feed/": FakeResp(404),
+        }
+    )
+    report = enumerate_wordpress(
+        handler, "https://host.test/blog/", homepage_text=HOMEPAGE
+    )
+
+    assert report.core_version == "6.5"
+    assert all(
+        url.startswith("https://host.test/blog/")
+        for url in handler.calls
+        if "host.test" in url
+    )
+
+
 def test_core_version_from_readme_html_when_generator_stripped():
     handler = FakeHandler(
         {

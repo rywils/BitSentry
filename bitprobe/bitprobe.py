@@ -28,7 +28,9 @@ def _apply_auth_args(args, config_kwargs: dict) -> None:
 
     if bearer:
         config_kwargs["auth"] = {"type": "bearer", "credentials": {"token": bearer}}
-    elif basic and ":" in basic:
+    elif basic:
+        if ":" not in basic:
+            raise SystemExit("[!] --auth-basic must be in the form USER:PASS")
         user, _, password = basic.partition(":")
         config_kwargs["auth"] = {
             "type": "basic",

@@ -16,7 +16,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlunparse
 
 _ASSET_RE = re.compile(
     r"/wp-content/(?P<kind>plugins|themes)/(?P<slug>[a-z0-9][a-z0-9._-]*)/"
@@ -52,27 +52,40 @@ class WordPressReport:
 
 
 def is_wordpress(html: str, headers: Optional[Dict] = None) -> bool:
-    headers = headers or {}
+    """True if the page HTML or its response headers look like WordPress."""
+    # Header names are case-insensitive; normalize so a lowercase-header server
+    # (or a plain dict built from one) still matches.
+    lower = {str(k).lower(): v for k, v in (headers or {}).items()}
     haystack = html or ""
     if re.search(r"/wp-(?:content|includes)/", haystack, re.I):
         return True
     if _META_GENERATOR_RE.search(haystack):
         return True
-    pingback = str(headers.get("X-Pingback", ""))
+    pingback = str(lower.get("x-pingback", ""))
     if pingback.rstrip("/").endswith("xmlrpc.php"):
         return True
-    link = str(headers.get("Link", ""))
+    link = str(lower.get("link", ""))
     if "/wp-json/" in link:
         return True
     return False
 
 
-def _root_url(url: str) -> str:
+def _base_url(url: str) -> str:
+    """
+    Crawl-root base URL, keeping any subdirectory the install lives under.
+
+    ``https://host/blog`` and ``https://host/blog/`` both -> ``https://host/blog/``
+    so component/user/feed/exposure requests resolve under ``/blog/``.
+    """
     parsed = urlparse(url)
-    return f"{parsed.scheme}://{parsed.netloc}/"
+    path = parsed.path or "/"
+    if not path.endswith("/"):
+        path += "/"
+    return urlunparse((parsed.scheme, parsed.netloc, path, "", "", ""))
 
 
 def _extract_components(texts: List[str]) -> Dict[str, Dict[str, Dict]]:
+    """Plugin/theme slugs (and ``?ver=`` versions) referenced by the given HTML."""
     found: Dict[str, Dict[str, Dict]] = {"plugins": {}, "themes": {}}
     for text in texts:
         if not text:
@@ -97,6 +110,7 @@ def _extract_components(texts: List[str]) -> Dict[str, Dict[str, Dict]]:
 def _fill_component_versions(
     http, root_url: str, kind: str, components: Dict[str, Dict]
 ) -> None:
+    """Fetch ``readme.txt`` / ``style.css`` for slugs that had no inline version."""
     fetches = 0
     readme_name = "readme.txt" if kind == "plugins" else "style.css"
     pattern = _STABLE_TAG_RE if kind == "plugins" else _STYLE_VERSION_RE
@@ -116,6 +130,7 @@ def _fill_component_versions(
 
 
 def _detect_core_version(http, root_url: str, homepage: str) -> tuple:
+    """Best-effort ``(version, source)`` for WordPress core; ``(None, None)`` if unknown."""
     meta = _META_GENERATOR_RE.search(homepage or "")
     if meta:
         return meta.group(1), "meta-generator"
@@ -124,7 +139,9 @@ def _detect_core_version(http, root_url: str, homepage: str) -> tuple:
     if embed:
         return embed.group(1), "wp-embed-asset"
 
-    feed = http.get(urljoin(root_url, "feed/"), allow_redirects=True)
+    # Do not follow redirects: a cross-host Location on feed/ would send
+    # scanner traffic to an unauthorized target.
+    feed = http.get(urljoin(root_url, "feed/"), allow_redirects=False)
     if feed is not None and feed.status_code == 200:
         feed_match = _FEED_GENERATOR_RE.search(feed.text or "")
         if feed_match:
@@ -140,6 +157,7 @@ def _detect_core_version(http, root_url: str, homepage: str) -> tuple:
 
 
 def _enumerate_users(http, root_url: str) -> List[Dict]:
+    """Usernames exposed via the REST users route or the ``?author=`` redirect."""
     users: List[Dict] = []
     seen = set()
 
@@ -183,6 +201,7 @@ def _enumerate_users(http, root_url: str) -> List[Dict]:
 
 
 def _check_exposures(http, root_url: str) -> List[Dict]:
+    """Probe a small set of well-known WordPress exposures (xmlrpc, uploads autoindex)."""
     exposures: List[Dict] = []
 
     xmlrpc = http.get(urljoin(root_url, "xmlrpc.php"), allow_redirects=False)
@@ -220,7 +239,8 @@ def enumerate_wordpress(
     homepage_text: Optional[str] = None,
     extra_texts: Optional[List[str]] = None,
 ) -> WordPressReport:
-    root_url = _root_url(url)
+    """Run the full WordPress enumeration for one site and return a report."""
+    root_url = _base_url(url)
 
     homepage = homepage_text
     headers: Dict = {}

@@ -33,6 +33,7 @@ class WordPressScanPlugin(BasePlugin):
         return "Enumerates WordPress core, plugins, themes and users, then correlates CVEs"
 
     def scan(self, url_info: Dict, request_handler) -> List[Finding]:
+        """Enumerate + CVE-correlate WordPress at crawl root; [] for non-WP targets."""
         if url_info.get("depth", 0) > 0:
             return []
 
@@ -57,6 +58,7 @@ class WordPressScanPlugin(BasePlugin):
     # -- inventory (informational) -------------------------------------------------
 
     def _inventory_findings(self, url: str, report) -> List[Finding]:
+        """Informational findings: core version, component inventory, users, exposures."""
         findings: List[Finding] = []
 
         if report.core_version:
@@ -142,6 +144,7 @@ class WordPressScanPlugin(BasePlugin):
     # -- CVE correlation ---------------------------------------------------------
 
     def _cve_findings(self, url: str, report) -> List[Finding]:
+        """Correlate discovered core/plugin/theme versions against the CVE store."""
         if not (sqlite_cve_db_available() and query_cves and calculate_severity):
             return []
 
@@ -168,6 +171,7 @@ class WordPressScanPlugin(BasePlugin):
         return findings
 
     def _query(self, label: str, product: str, version: str, url: str) -> List[Finding]:
+        """Query the CVE store for one product/version and build capped findings."""
         try:
             rows = query_cves(product, version=version)
         except Exception:
