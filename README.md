@@ -1,8 +1,4 @@
 <p align="center">
-  <img src="./BitSentry.png" alt="BitSentry logo" width="220" />
-</p>
-
-<p align="center">
 <img src="https://res.cloudinary.com/noqoikpl/image/upload/f_auto,q_auto/bitsentry" alt="bitsentry" width="520">
 </p>
 
