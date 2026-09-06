@@ -2,7 +2,9 @@
   <img src="./BitSentry.png" alt="BitSentry logo" width="220" />
 </p>
 
-# BitSentry
+<p align="center">
+<img src="https://res.cloudinary.com/noqoikpl/image/upload/f_auto,q_auto/bitsentry" alt="bitsentry" width="520">
+</p>
 
 BitSentry is a CLI-first security assessment suite. The public build focuses on two production-ready capabilities:
 
