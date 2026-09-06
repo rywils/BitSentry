@@ -127,6 +127,14 @@ def _nvd_get(
             return response
         if response.status_code not in NVD_RETRY_HTTP:
             return response
+        if response.status_code == 404 and headers.get("apiKey"):
+            # NVD answers an unrecognized apiKey with 404 rather than 401/403.
+            # That is a permanent credential error, so retrying only hides it.
+            print(
+                "  [!] NVD rejected the supplied API key (HTTP 404). "
+                "Check NVD_API_KEY, or unset it to sync without a key."
+            )
+            return response
         wait = (NVD_SLEEP_WITH_KEY if headers.get("apiKey") else NVD_SLEEP_NO_KEY) * attempt
         print(
             f"  [!] NVD HTTP {response.status_code} "
@@ -841,6 +849,11 @@ def _update_cve_database_unlocked(
                 print(f"[!] NVD API request failed: HTTP {response.status_code}")
                 print(f"[!] URL: {response.url}")
                 print(f"[!] Response: {response.text}")
+                if response.status_code == 404 and headers.get("apiKey"):
+                    raise RuntimeError(
+                        "NVD rejected the supplied API key (HTTP 404). Set a valid "
+                        "NVD_API_KEY or unset it to sync at the slower unauthenticated rate."
+                    )
                 raise RuntimeError(
                     f"NVD API request failed with HTTP {response.status_code}"
                 )

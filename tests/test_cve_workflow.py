@@ -21,8 +21,14 @@ def test_cve_workflow_has_safe_producer_contract() -> None:
     assert workflow["concurrency"]["group"] == "cve-db-producer"
     assert job["timeout-minutes"] == 360
     assert steps[0]["with"]["persist-credentials"] is False
-    assert next(step for step in steps if step.get("uses") == "actions/setup-python@v5")["with"]["python-version"] == "3.13"
+    assert next(step for step in steps if step.get("uses") == "actions/setup-python@v6")["with"]["python-version"] == "3.13"
+    assert not any(
+        str(step.get("uses", "")).endswith(("checkout@v4", "setup-python@v5"))
+        for step in steps
+    ), "actions pinned to Node 20 runtimes must stay bumped"
     assert job["env"]["NVD_API_KEY"] == "${{ secrets.NVD_API_KEY }}"
+    key_gate = next(step["run"] for step in steps if "NVD API key" in (step.get("name") or ""))
+    assert "services.nvd.nist.gov" in key_gate, "key gate must verify the key, not just its presence"
     assert names.index("Restore previous snapshot") < names.index("Update canonical database")
     assert "build_cve_snapshot.py" in next(step["run"] for step in steps if step.get("name") == "Build snapshot")
     assert "update_cve_snapshot_release.sh" in next(step["run"] for step in steps if step.get("name") == "Publish releases")
